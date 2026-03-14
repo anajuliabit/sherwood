@@ -8,11 +8,14 @@
  * 4. Monitor: Continuously check position health + market conditions
  * 5. Unwind: Hit profit target or risk threshold → Sell → Repay → Withdraw
  *
- * The agent provides their own WETH as collateral. The borrowed USDC is swapped
- * into whatever token Messari research recommends. No vault capital at risk —
- * the vault is the authorization layer only (assetAmount=0).
+ * The vault is the onchain identity — it holds all positions (mTokens, borrows,
+ * swapped tokens) via delegatecall to a shared executor lib.
  *
- * All intelligence lives here. The on-chain BatchExecutor is a dumb pipe.
+ * The agent provides their own WETH as collateral (sent to vault). The borrowed
+ * USDC is swapped into whatever token Messari research recommends. assetAmount=0
+ * since no LP capital is deployed — agent capital only.
+ *
+ * All intelligence lives here. The onchain executor lib is a dumb pipe.
  */
 
 import type { Address } from "viem";
@@ -119,19 +122,22 @@ const SWAP_ROUTER_ABI = [
 // ── Build Entry Batch (Deposit WETH → Borrow USDC → Swap to Target) ──
 
 /**
- * Build the entry batch. Agent's WETH must already be in the executor.
+ * Build the entry batch. Agent's WETH must already be in the vault.
  *
  * Flow:
- *   1. Approve mWETH to pull WETH from executor
+ *   1. Approve mWETH to pull WETH from vault
  *   2. Deposit WETH as collateral on Moonwell
  *   3. Enable WETH market as collateral
  *   4. Borrow USDC against WETH collateral
  *   5. Approve SwapRouter to spend borrowed USDC
  *   6. Swap USDC → target token (Messari pick)
+ *
+ * All calls execute as the vault (via delegatecall), so positions
+ * (mTokens, borrows, swapped tokens) live on the vault address.
  */
 export function buildEntryBatch(
   config: LeveredSwapConfig,
-  executorAddress: Address,
+  vaultAddress: Address,
   amountOutMinimum: bigint, // Computed by CLI from Uniswap quote
 ): BatchCall[] {
   const collateral = parseEther(config.collateralAmount); // WETH = 18 decimals
@@ -199,7 +205,7 @@ export function buildEntryBatch(
             tokenIn: TOKENS.USDC,
             tokenOut: config.targetToken,
             fee: config.fee,
-            recipient: executorAddress, // Tokens stay in executor
+            recipient: vaultAddress, // Tokens stay in vault (delegatecall)
             amountIn: borrow,
             amountOutMinimum,
             sqrtPriceLimitX96: 0n,
@@ -227,7 +233,7 @@ export function buildEntryBatch(
  */
 export function buildExitBatch(
   config: LeveredSwapConfig,
-  executorAddress: Address,
+  vaultAddress: Address,
   tokenBalance: bigint, // How much of the target token to sell
   amountOutMinimum: bigint, // Min USDC from selling the token
   borrowBalance: bigint, // Current borrow balance to repay (includes interest)
@@ -256,7 +262,7 @@ export function buildExitBatch(
             tokenIn: config.targetToken,
             tokenOut: TOKENS.USDC,
             fee: config.fee,
-            recipient: executorAddress,
+            recipient: vaultAddress,
             amountIn: tokenBalance,
             amountOutMinimum,
             sqrtPriceLimitX96: 0n,
@@ -285,7 +291,7 @@ export function buildExitBatch(
       }),
       value: 0n,
     },
-    // 5. Withdraw WETH collateral (stays in executor for agent to retrieve)
+    // 5. Withdraw WETH collateral (stays in vault)
     {
       target: MOONWELL.mWETH,
       data: encodeFunctionData({

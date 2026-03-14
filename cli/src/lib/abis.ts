@@ -3,104 +3,7 @@
  * Extracted from contracts/src/ — keep in sync if contracts change.
  */
 
-// ── BatchExecutor ──
-
-export const BATCH_EXECUTOR_ABI = [
-  {
-    name: "executeBatch",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [
-      {
-        name: "calls",
-        type: "tuple[]",
-        components: [
-          { name: "target", type: "address" },
-          { name: "data", type: "bytes" },
-          { name: "value", type: "uint256" },
-        ],
-      },
-    ],
-    outputs: [],
-  },
-  {
-    name: "simulateBatch",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [
-      {
-        name: "calls",
-        type: "tuple[]",
-        components: [
-          { name: "target", type: "address" },
-          { name: "data", type: "bytes" },
-          { name: "value", type: "uint256" },
-        ],
-      },
-    ],
-    outputs: [
-      {
-        name: "results",
-        type: "tuple[]",
-        components: [
-          { name: "success", type: "bool" },
-          { name: "returnData", type: "bytes" },
-        ],
-      },
-    ],
-  },
-  {
-    name: "addTarget",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "target", type: "address" }],
-    outputs: [],
-  },
-  {
-    name: "addTargets",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "targets", type: "address[]" }],
-    outputs: [],
-  },
-  {
-    name: "removeTarget",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "target", type: "address" }],
-    outputs: [],
-  },
-  {
-    name: "isAllowedTarget",
-    type: "function",
-    stateMutability: "view",
-    inputs: [{ name: "target", type: "address" }],
-    outputs: [{ name: "", type: "bool" }],
-  },
-  {
-    name: "getAllowedTargets",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "address[]" }],
-  },
-  {
-    name: "allowedTargetCount",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
-    name: "vault",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "address" }],
-  },
-] as const;
-
-// ── SyndicateVault ──
+// ── SyndicateVault (includes batch execution, target management) ──
 
 export const SYNDICATE_VAULT_ABI = [
   // ERC-4626
@@ -136,7 +39,7 @@ export const SYNDICATE_VAULT_ABI = [
     inputs: [{ name: "account", type: "address" }],
     outputs: [{ name: "", type: "uint256" }],
   },
-  // Vault-specific
+  // LP
   {
     name: "ragequit",
     type: "function",
@@ -144,17 +47,88 @@ export const SYNDICATE_VAULT_ABI = [
     inputs: [{ name: "receiver", type: "address" }],
     outputs: [{ name: "assets", type: "uint256" }],
   },
+  // Batch execution (via delegatecall to shared executor lib)
   {
-    name: "executeStrategy",
+    name: "executeBatch",
     type: "function",
     stateMutability: "nonpayable",
     inputs: [
-      { name: "strategy", type: "address" },
-      { name: "data", type: "bytes" },
+      {
+        name: "calls",
+        type: "tuple[]",
+        components: [
+          { name: "target", type: "address" },
+          { name: "data", type: "bytes" },
+          { name: "value", type: "uint256" },
+        ],
+      },
       { name: "assetAmount", type: "uint256" },
     ],
-    outputs: [{ name: "", type: "bytes" }],
+    outputs: [],
   },
+  {
+    name: "simulateBatch",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      {
+        name: "calls",
+        type: "tuple[]",
+        components: [
+          { name: "target", type: "address" },
+          { name: "data", type: "bytes" },
+          { name: "value", type: "uint256" },
+        ],
+      },
+    ],
+    outputs: [
+      {
+        name: "results",
+        type: "tuple[]",
+        components: [
+          { name: "success", type: "bool" },
+          { name: "returnData", type: "bytes" },
+        ],
+      },
+    ],
+  },
+  // Target allowlist
+  {
+    name: "addTarget",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "target", type: "address" }],
+    outputs: [],
+  },
+  {
+    name: "addTargets",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "targets", type: "address[]" }],
+    outputs: [],
+  },
+  {
+    name: "removeTarget",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "target", type: "address" }],
+    outputs: [],
+  },
+  {
+    name: "isAllowedTarget",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "target", type: "address" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    name: "getAllowedTargets",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address[]" }],
+  },
+  // Agent management
   {
     name: "registerAgent",
     type: "function",
@@ -174,6 +148,7 @@ export const SYNDICATE_VAULT_ABI = [
     inputs: [{ name: "pkpAddress", type: "address" }],
     outputs: [],
   },
+  // Views
   {
     name: "getAgentConfig",
     type: "function",
@@ -234,6 +209,13 @@ export const SYNDICATE_VAULT_ABI = [
     outputs: [{ name: "", type: "bool" }],
   },
   {
+    name: "getExecutorImpl",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
     name: "pause",
     type: "function",
     stateMutability: "nonpayable",
@@ -287,17 +269,6 @@ export const ERC20_ABI = [
     stateMutability: "nonpayable",
     inputs: [
       { name: "spender", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    outputs: [{ name: "", type: "bool" }],
-  },
-  {
-    name: "transferFrom",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "from", type: "address" },
-      { name: "to", type: "address" },
       { name: "amount", type: "uint256" },
     ],
     outputs: [{ name: "", type: "bool" }],

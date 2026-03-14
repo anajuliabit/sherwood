@@ -2,14 +2,15 @@
  * `sherwood strategy run` command — executes the levered swap strategy.
  *
  * Flow:
- *   1. Agent sends WETH to executor (prerequisite)
+ *   1. Agent sends WETH to vault (prerequisite)
  *   2. Quote: get USDC → target token price from Uniswap
  *   3. Build batch: deposit WETH → borrow USDC → swap to target
- *   4. Simulate via vault (authorization check)
+ *   4. Simulate via vault (caps + allowlist check)
  *   5. Execute on-chain (if --execute flag)
  *
- * The vault acts as authorization layer only (assetAmount=0).
- * Agent provides their own WETH as collateral.
+ * The vault is the onchain identity — all positions live on the vault
+ * via delegatecall to a shared executor lib. assetAmount=0 since
+ * agent provides their own WETH (no LP capital deployed).
  */
 
 import type { Address } from "viem";
@@ -18,8 +19,8 @@ import chalk from "chalk";
 import ora from "ora";
 import { buildEntryBatch, type LeveredSwapConfig } from "../strategies/levered-swap.js";
 import { getQuote, applySlippage } from "../lib/quote.js";
-import { encodeBatchExecute, formatBatch } from "../lib/batch.js";
-import { executeStrategy, simulateStrategy } from "../lib/vault.js";
+import { formatBatch } from "../lib/batch.js";
+import { executeBatch, simulateBatch } from "../lib/vault.js";
 import { getPublicClient } from "../lib/client.js";
 import { ERC20_ABI } from "../lib/abis.js";
 import { TOKENS } from "../lib/addresses.js";
@@ -38,11 +39,6 @@ export async function runLeveredSwap(opts: {
   // ── Validate inputs ──
 
   const vaultAddress = opts.vault as Address;
-  const executorAddress = process.env.BATCH_EXECUTOR_ADDRESS as Address;
-  if (!executorAddress) {
-    console.error(chalk.red("BATCH_EXECUTOR_ADDRESS env var is required"));
-    process.exit(1);
-  }
 
   if (!isAddress(opts.token)) {
     console.error(chalk.red(`Invalid token address: ${opts.token}`));
@@ -83,7 +79,6 @@ export async function runLeveredSwap(opts: {
   console.log(`  Fee tier:    ${(feeTier / 10000 * 100).toFixed(2)}%`);
   console.log(`  Slippage:    ${(slippageBps / 100).toFixed(2)}%`);
   console.log(`  Vault:       ${vaultAddress}`);
-  console.log(`  Executor:    ${executorAddress}`);
   console.log();
 
   // ── Get Uniswap quote (USDC → target token) ──
@@ -124,16 +119,13 @@ export async function runLeveredSwap(opts: {
     stopLossBps: 1000, // 10% default
   };
 
-  const calls = buildEntryBatch(config, executorAddress, minOut);
+  const calls = buildEntryBatch(config, vaultAddress, minOut);
 
   console.log();
   console.log(chalk.bold("Batch calls (6):"));
   console.log(formatBatch(calls));
   console.log();
 
-  // ── Encode for vault ──
-
-  const batchCalldata = encodeBatchExecute(calls);
   // assetAmount=0: no vault capital at risk, agent provides own WETH
   const assetAmount = 0n;
 
@@ -141,8 +133,21 @@ export async function runLeveredSwap(opts: {
 
   const simSpinner = ora("Simulating via vault...").start();
   try {
-    await simulateStrategy(executorAddress, batchCalldata, assetAmount);
-    simSpinner.succeed("Simulation passed");
+    const results = await simulateBatch(calls);
+    const allSucceeded = results.every((r) => r.success);
+    if (allSucceeded) {
+      simSpinner.succeed("Simulation passed");
+    } else {
+      simSpinner.fail("Simulation: some calls failed");
+      for (let i = 0; i < results.length; i++) {
+        const status = results[i].success ? "✓" : "✗";
+        console.log(`  ${status} Call ${i + 1}`);
+      }
+      if (!opts.execute) {
+        process.exit(1);
+      }
+      console.log(chalk.yellow("Continuing to execution despite simulation failure..."));
+    }
   } catch (err) {
     simSpinner.fail("Simulation failed");
     const msg = err instanceof Error ? err.message : String(err);
@@ -158,14 +163,14 @@ export async function runLeveredSwap(opts: {
   if (!opts.execute) {
     console.log();
     console.log(chalk.yellow("Dry run complete. Add --execute to submit on-chain."));
-    console.log(chalk.dim("  Prerequisite: send WETH to executor before executing."));
+    console.log(chalk.dim("  Prerequisite: send WETH to vault before executing."));
     return;
   }
 
-  const execSpinner = ora("Executing strategy via vault...").start();
+  const execSpinner = ora("Executing batch via vault...").start();
   try {
-    const txHash = await executeStrategy(executorAddress, batchCalldata, assetAmount);
-    execSpinner.succeed(`Strategy executed: ${txHash}`);
+    const txHash = await executeBatch(calls, assetAmount);
+    execSpinner.succeed(`Batch executed: ${txHash}`);
     console.log(chalk.dim(`  https://basescan.org/tx/${txHash}`));
   } catch (err) {
     execSpinner.fail("Execution failed");

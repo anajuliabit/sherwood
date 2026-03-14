@@ -1,34 +1,15 @@
 /**
- * Types and helpers for BatchExecutor interaction.
+ * Types and helpers for batch call construction.
+ *
+ * Calls go directly to vault.executeBatch() — no separate executor contract.
  */
 
 import type { Address, Hex } from "viem";
-import { encodeFunctionData } from "viem";
-import { BATCH_EXECUTOR_ABI } from "./abis.js";
 
 export interface BatchCall {
   target: Address;
   data: Hex;
   value: bigint;
-}
-
-/**
- * Encode a batch of calls for the BatchExecutor contract.
- * Returns the ABI-encoded calldata for executeBatch(Call[]).
- * This is what gets passed as `data` to vault.executeStrategy().
- */
-export function encodeBatchExecute(calls: BatchCall[]): Hex {
-  return encodeFunctionData({
-    abi: BATCH_EXECUTOR_ABI,
-    functionName: "executeBatch",
-    args: [
-      calls.map((c) => ({
-        target: c.target,
-        data: c.data,
-        value: c.value,
-      })),
-    ],
-  });
 }
 
 /**

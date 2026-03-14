@@ -1,13 +1,22 @@
 /**
  * SyndicateVault contract wrapper.
+ *
+ * The vault is the onchain identity — it holds all positions via delegatecall
+ * to a shared BatchExecutorLib. No separate executor contract needed.
  */
 
 import type { Address, Hex } from "viem";
-import { formatUnits } from "viem";
+import { formatUnits, encodeFunctionData, decodeFunctionResult } from "viem";
 import { base } from "viem/chains";
 import { getPublicClient, getWalletClient, getAccount } from "./client.js";
 import { SYNDICATE_VAULT_ABI, ERC20_ABI } from "./abis.js";
 import { TOKENS } from "./addresses.js";
+import type { BatchCall } from "./batch.js";
+
+export interface SimulationResult {
+  success: boolean;
+  returnData: Hex;
+}
 
 function getVaultAddress(): Address {
   const addr = process.env.VAULT_ADDRESS;
@@ -16,6 +25,8 @@ function getVaultAddress(): Address {
   }
   return addr as Address;
 }
+
+// ── LP Functions ──
 
 /**
  * Deposit USDC into the vault. Handles approval + deposit.
@@ -63,13 +74,15 @@ export async function ragequit(): Promise<Hex> {
   });
 }
 
+// ── Batch Execution ──
+
 /**
- * Execute a strategy through the vault.
- * The vault approves the strategy for assetAmount, then calls strategy.call(data).
+ * Execute a batch of protocol calls through the vault.
+ * The vault checks caps + allowlist, then delegatecalls to the executor lib.
+ * All calls execute as the vault — positions live on the vault.
  */
-export async function executeStrategy(
-  strategyAddress: Address,
-  data: Hex,
+export async function executeBatch(
+  calls: BatchCall[],
   assetAmount: bigint,
 ): Promise<Hex> {
   const wallet = getWalletClient();
@@ -79,32 +92,118 @@ export async function executeStrategy(
     chain: base,
     address: getVaultAddress(),
     abi: SYNDICATE_VAULT_ABI,
-    functionName: "executeStrategy",
-    args: [strategyAddress, data, assetAmount],
+    functionName: "executeBatch",
+    args: [
+      calls.map((c) => ({
+        target: c.target,
+        data: c.data,
+        value: c.value,
+      })),
+      assetAmount,
+    ],
   });
 }
 
 /**
- * Simulate executeStrategy via eth_call (no state committed).
- * More accurate than simulateBatch alone because it includes vault cap checks.
+ * Simulate a batch via eth_call (no state committed).
+ * simulateBatch is NOT a view function — must use raw eth_call.
+ * Anyone can call this (no agent check).
  */
-export async function simulateStrategy(
-  strategyAddress: Address,
-  data: Hex,
-  assetAmount: bigint,
-): Promise<void> {
+export async function simulateBatch(calls: BatchCall[]): Promise<SimulationResult[]> {
   const client = getPublicClient();
-  const account = getAccount();
+  const vaultAddress = getVaultAddress();
 
-  // This will revert with a reason if caps are exceeded or batch fails
-  await client.simulateContract({
+  const calldata = encodeFunctionData({
+    abi: SYNDICATE_VAULT_ABI,
+    functionName: "simulateBatch",
+    args: [
+      calls.map((c) => ({
+        target: c.target,
+        data: c.data,
+        value: c.value,
+      })),
+    ],
+  });
+
+  const { data } = await client.call({
+    to: vaultAddress,
+    data: calldata,
+  });
+
+  if (!data) {
+    throw new Error("simulateBatch returned no data");
+  }
+
+  const decoded = decodeFunctionResult({
+    abi: SYNDICATE_VAULT_ABI,
+    functionName: "simulateBatch",
+    data,
+  });
+
+  return (decoded as readonly { success: boolean; returnData: Hex }[]).map((r) => ({
+    success: r.success,
+    returnData: r.returnData,
+  }));
+}
+
+// ── Target Management ──
+
+/**
+ * Add a single target to the vault's allowlist (owner only).
+ */
+export async function addTarget(target: Address): Promise<Hex> {
+  const client = getWalletClient();
+  return client.writeContract({
+    account: getAccount(),
+    chain: base,
     address: getVaultAddress(),
     abi: SYNDICATE_VAULT_ABI,
-    functionName: "executeStrategy",
-    args: [strategyAddress, data, assetAmount],
-    account: account.address,
+    functionName: "addTarget",
+    args: [target],
   });
 }
+
+/**
+ * Add multiple targets to the vault's allowlist (owner only).
+ */
+export async function addTargets(targets: Address[]): Promise<Hex> {
+  const client = getWalletClient();
+  return client.writeContract({
+    account: getAccount(),
+    chain: base,
+    address: getVaultAddress(),
+    abi: SYNDICATE_VAULT_ABI,
+    functionName: "addTargets",
+    args: [targets],
+  });
+}
+
+/**
+ * Check if a target is in the vault's allowlist.
+ */
+export async function isAllowedTarget(target: Address): Promise<boolean> {
+  const client = getPublicClient();
+  return client.readContract({
+    address: getVaultAddress(),
+    abi: SYNDICATE_VAULT_ABI,
+    functionName: "isAllowedTarget",
+    args: [target],
+  }) as Promise<boolean>;
+}
+
+/**
+ * Get all allowed targets.
+ */
+export async function getAllowedTargets(): Promise<Address[]> {
+  const client = getPublicClient();
+  return client.readContract({
+    address: getVaultAddress(),
+    abi: SYNDICATE_VAULT_ABI,
+    functionName: "getAllowedTargets",
+  }) as Promise<Address[]>;
+}
+
+// ── Agent Management ──
 
 /**
  * Register a new agent (owner only).
@@ -126,6 +225,8 @@ export async function registerAgent(
     args: [pkpAddress, operatorEOA, maxPerTx, dailyLimit],
   });
 }
+
+// ── Views ──
 
 export interface VaultInfo {
   address: Address;
