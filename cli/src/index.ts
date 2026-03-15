@@ -6,7 +6,7 @@ import type { Address } from "viem";
 import chalk from "chalk";
 import ora from "ora";
 import { setNetwork } from "./lib/network.js";
-import { getExplorerUrl, isTestnet } from "./lib/network.js";
+import { getExplorerUrl, isTestnet, getChain } from "./lib/network.js";
 import { TOKENS } from "./lib/addresses.js";
 import { getPublicClient, getAccount } from "./lib/client.js";
 import { ERC20_ABI } from "./lib/abis.js";
@@ -23,7 +23,7 @@ import { registerAllowanceCommands } from "./commands/allowance.js";
 import { registerIdentityCommands } from "./commands/identity.js";
 import { getXmtpClient, createSyndicateGroup, getGroup, addMember, sendEnvelope, removeMember } from "./lib/xmtp.js";
 import { setTextRecord, resolveVaultSyndicate } from "./lib/ens.js";
-import { cacheGroupId } from "./lib/config.js";
+import { cacheGroupId, setChainContract, setChainContracts, getChainContracts, loadConfig } from "./lib/config.js";
 
 const program = new Command();
 
@@ -85,7 +85,8 @@ syndicate
       // Auto-generate vault share symbol: sw + asset symbol (e.g. swWETH, swUSDC)
       const symbol = `sw${assetSymbol}`;
 
-      const hash = await factoryLib.createSyndicate({
+      spinner.text = "Deploying vault via factory...";
+      const result = await factoryLib.createSyndicate({
         creatorAgentId: BigInt(opts.agentId),
         metadataURI: opts.metadataUri,
         asset,
@@ -98,6 +99,10 @@ syndicate
         openDeposits: opts.openDeposits,
         subdomain: opts.subdomain,
       });
+
+      // Auto-save vault address to config
+      setChainContract(getChain().id, "vault", result.vault);
+
       spinner.text = "Creating XMTP chat group...";
 
       // Create XMTP group for syndicate chat
@@ -115,10 +120,12 @@ syndicate
         console.warn(chalk.yellow(`  ⚠ Chat setup failed: ${chatErr instanceof Error ? chatErr.message : String(chatErr)}`));
       }
 
-      spinner.succeed(`Syndicate created: ${hash}`);
+      spinner.succeed(`Syndicate #${result.syndicateId} created`);
+      console.log(chalk.dim(`  Vault: ${result.vault}`));
       console.log(chalk.dim(`  ENS: ${opts.subdomain}.sherwoodagent.eth`));
-      console.log(chalk.dim(`  ${getExplorerUrl(hash)}`));
+      console.log(chalk.dim(`  ${getExplorerUrl(result.hash)}`));
       console.log(chalk.dim(`  Chat: sherwood chat ${opts.subdomain}`));
+      console.log(chalk.dim(`  Vault saved to ~/.sherwood/config.json`));
       if (opts.publicChat) {
         console.log(chalk.dim("  Spectator mode: enabled"));
       }
@@ -681,5 +688,54 @@ registerAllowanceCommands(program);
 
 // ── Identity commands ──
 registerIdentityCommands(program);
+
+// ── Config commands ──
+const configCmd = program.command("config");
+
+configCmd
+  .command("set")
+  .description("Save contract addresses to ~/.sherwood/config.json (persists across sessions)")
+  .option("--factory <address>", "SyndicateFactory address")
+  .option("--registry <address>", "StrategyRegistry address")
+  .option("--vault <address>", "Default SyndicateVault address")
+  .action((opts) => {
+    const chainId = getChain().id;
+    const updates: Record<string, string> = {};
+
+    if (opts.factory) updates.factory = opts.factory;
+    if (opts.registry) updates.registry = opts.registry;
+    if (opts.vault) updates.vault = opts.vault;
+
+    if (Object.keys(updates).length === 0) {
+      console.log(chalk.red("Provide at least one of: --factory, --registry, --vault"));
+      process.exit(1);
+    }
+
+    setChainContracts(chainId, updates);
+    console.log(chalk.green(`Saved to ~/.sherwood/config.json (chain ${chainId}):`));
+    for (const [key, value] of Object.entries(updates)) {
+      console.log(chalk.dim(`  ${key}: ${value}`));
+    }
+  });
+
+configCmd
+  .command("show")
+  .description("Display current config for the active network")
+  .action(() => {
+    const chainId = getChain().id;
+    const contracts = getChainContracts(chainId);
+    const config = loadConfig();
+
+    console.log();
+    console.log(chalk.bold(`Sherwood Config (chain ${chainId})`));
+    console.log(chalk.dim("─".repeat(50)));
+    console.log(`  Agent ID:   ${config.agentId ?? chalk.dim("not set")}`);
+    console.log(`  Factory:    ${contracts.factory ?? chalk.dim("not set")}`);
+    console.log(`  Registry:   ${contracts.registry ?? chalk.dim("not set")}`);
+    console.log(`  Vault:      ${contracts.vault ?? chalk.dim("not set")}`);
+    console.log();
+    console.log(chalk.dim("  Config file: ~/.sherwood/config.json"));
+    console.log();
+  });
 
 program.parse();

@@ -11,6 +11,7 @@ import { getChain, getNetwork } from "./network.js";
 import { getPublicClient, getWalletClient, getAccount } from "./client.js";
 import { SYNDICATE_VAULT_ABI, ERC20_ABI } from "./abis.js";
 import type { BatchCall } from "./batch.js";
+import { getChainContracts } from "./config.js";
 
 export interface SimulationResult {
   success: boolean;
@@ -18,12 +19,19 @@ export interface SimulationResult {
 }
 
 function getVaultAddress(): Address {
+  // 1. Env var (set per-command via --vault flag in index.ts)
   const envKey = getNetwork() === "base-sepolia" ? "VAULT_ADDRESS_TESTNET" : "VAULT_ADDRESS";
-  const addr = process.env[envKey];
-  if (!addr) {
-    throw new Error(`${envKey} env var is required`);
-  }
-  return addr as Address;
+  const envAddr = process.env[envKey];
+  if (envAddr) return envAddr as Address;
+
+  // 2. Config (~/.sherwood/config.json) — default vault
+  const chainId = getChain().id;
+  const fromConfig = getChainContracts(chainId).vault;
+  if (fromConfig) return fromConfig as Address;
+
+  throw new Error(
+    `Vault address not found. Pass --vault <addr> or run 'sherwood config set --vault <addr>'.`,
+  );
 }
 
 // ── Asset Helpers ──

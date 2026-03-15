@@ -1,7 +1,7 @@
 /**
  * Local config management — ~/.sherwood/config.json
  *
- * Stores XMTP DB encryption key and group ID cache.
+ * Stores XMTP DB encryption key, group ID cache, and per-chain contract addresses.
  * The encryption key is auto-generated on first run.
  */
 
@@ -12,12 +12,20 @@ import { getRandomValues } from "node:crypto";
 const CONFIG_DIR = path.join(process.env.HOME || "~", ".sherwood");
 const CONFIG_PATH = path.join(CONFIG_DIR, "config.json");
 
+/** Per-chain contract addresses (stored by chainId). */
+export interface ChainContracts {
+  factory?: string;
+  registry?: string;
+  vault?: string;
+}
+
 export interface SherwoodConfig {
   dbEncryptionKey: string; // hex-encoded 32 bytes
   xmtpInboxId?: string;
   groupCache: Record<string, string>; // subdomain → XMTP group ID
   veniceApiKey?: string; // Venice AI inference API key
   agentId?: number; // ERC-8004 identity token ID
+  contracts?: Record<string, ChainContracts>; // chainId → addresses
 }
 
 export function loadConfig(): SherwoodConfig {
@@ -67,4 +75,35 @@ export function setAgentId(agentId: number): void {
 
 export function getAgentId(): number | undefined {
   return loadConfig().agentId;
+}
+
+// ── Per-chain contract addresses ──
+
+export function getChainContracts(chainId: number): ChainContracts {
+  const config = loadConfig();
+  return config.contracts?.[String(chainId)] ?? {};
+}
+
+export function setChainContract(
+  chainId: number,
+  key: keyof ChainContracts,
+  value: string,
+): void {
+  const config = loadConfig();
+  if (!config.contracts) config.contracts = {};
+  const cid = String(chainId);
+  if (!config.contracts[cid]) config.contracts[cid] = {};
+  config.contracts[cid][key] = value;
+  saveConfig(config);
+}
+
+export function setChainContracts(
+  chainId: number,
+  contracts: Partial<ChainContracts>,
+): void {
+  const config = loadConfig();
+  if (!config.contracts) config.contracts = {};
+  const cid = String(chainId);
+  config.contracts[cid] = { ...config.contracts[cid], ...contracts };
+  saveConfig(config);
 }
