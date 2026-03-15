@@ -362,6 +362,13 @@ export const ERC20_ABI = [
     inputs: [],
     outputs: [{ name: "", type: "uint8" }],
   },
+  {
+    name: "symbol",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "string" }],
+  },
 ] as const;
 
 // ── SyndicateFactory ──
