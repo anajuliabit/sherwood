@@ -37,6 +37,7 @@ const syndicate = program.command("syndicate");
 syndicate
   .command("create")
   .description("Create a new syndicate via the factory")
+  .requiredOption("--subdomain <name>", "ENS subdomain (e.g. alpha-seekers)")
   .requiredOption("--name <name>", "Vault token name")
   .requiredOption("--symbol <symbol>", "Vault token symbol")
   .option("--asset <address>", "Underlying asset address")
@@ -65,8 +66,10 @@ syndicate
         maxBorrowRatio: BigInt(opts.borrowRatio),
         initialTargets: targets,
         openDeposits: opts.openDeposits,
+        subdomain: opts.subdomain,
       });
       spinner.succeed(`Syndicate created: ${hash}`);
+      console.log(chalk.dim(`  ENS: ${opts.subdomain}.sherwoodagent.eth`));
       console.log(chalk.dim(`  ${getExplorerUrl(hash)}`));
     } catch (err) {
       spinner.fail("Syndicate creation failed");
@@ -83,7 +86,7 @@ syndicate
     const spinner = ora("Loading syndicates...").start();
     try {
       // Try subgraph first (fast, indexed), fall back to on-chain
-      let syndicates: { id: string | bigint; vault: string; creator: string; metadataURI: string; createdAt: string | bigint; totalDeposits?: string; totalWithdrawals?: string }[];
+      let syndicates: { id: string | bigint; vault: string; creator: string; metadataURI: string; createdAt: string | bigint; totalDeposits?: string; totalWithdrawals?: string; subdomain?: string }[];
 
       if (process.env.SUBGRAPH_URL) {
         const result = await subgraphLib.getActiveSyndicates(opts.creator);
@@ -96,6 +99,7 @@ syndicate
           creator: s.creator,
           metadataURI: s.metadataURI,
           createdAt: s.createdAt.toString(),
+          subdomain: s.subdomain,
         }));
       }
 
@@ -116,7 +120,9 @@ syndicate
       for (const s of syndicates) {
         const ts = typeof s.createdAt === "string" ? Number(s.createdAt) : Number(s.createdAt);
         const date = new Date(ts * 1000).toLocaleDateString();
-        console.log(`  #${s.id}  ${chalk.cyan(String(s.vault))}`);
+        const ensName = s.subdomain ? `${s.subdomain}.sherwoodagent.eth` : "";
+        console.log(`  #${s.id}  ${chalk.bold(ensName || String(s.vault))}`);
+        if (ensName) console.log(`    Vault:   ${chalk.cyan(String(s.vault))}`);
         console.log(`    Creator: ${s.creator}`);
         console.log(`    Created: ${date}`);
         if (s.totalDeposits) {
@@ -154,6 +160,9 @@ syndicate
       console.log();
       console.log(chalk.bold(`Syndicate #${info.id}`));
       console.log(chalk.dim("─".repeat(40)));
+      if (info.subdomain) {
+        console.log(`  ENS:        ${chalk.bold(`${info.subdomain}.sherwoodagent.eth`)}`);
+      }
       console.log(`  Vault:      ${chalk.cyan(info.vault)}`);
       console.log(`  Creator:    ${info.creator}`);
       console.log(`  Created:    ${date}`);
