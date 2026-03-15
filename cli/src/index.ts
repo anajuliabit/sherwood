@@ -44,8 +44,7 @@ syndicate
   .command("create")
   .description("Create a new syndicate via the factory")
   .requiredOption("--subdomain <name>", "ENS subdomain (e.g. alpha-seekers)")
-  .requiredOption("--name <name>", "Vault token name")
-  .requiredOption("--symbol <symbol>", "Vault token symbol")
+  .requiredOption("--name <name>", "Syndicate name")
   .option("--asset <address>", "Underlying asset address")
   .option("--max-per-tx <amount>", "Max per transaction (in asset units)", "10000")
   .option("--max-daily <amount>", "Max daily combined spend (in asset units)", "50000")
@@ -63,18 +62,30 @@ syndicate
 
       const asset = (opts.asset || TOKENS().USDC) as Address;
 
-      // Read decimals from the asset ERC-20 (USDC=6, WETH=18, etc.)
-      const decimals = await getPublicClient().readContract({
-        address: asset,
-        abi: ERC20_ABI,
-        functionName: "decimals",
-      }) as number;
+      const publicClient = getPublicClient();
+
+      // Read decimals and symbol from the asset ERC-20
+      const [decimals, assetSymbol] = await Promise.all([
+        publicClient.readContract({
+          address: asset,
+          abi: ERC20_ABI,
+          functionName: "decimals",
+        }) as Promise<number>,
+        publicClient.readContract({
+          address: asset,
+          abi: ERC20_ABI,
+          functionName: "symbol",
+        }) as Promise<string>,
+      ]);
+
+      // Auto-generate vault share symbol: sw + asset symbol (e.g. swWETH, swUSDC)
+      const symbol = `sw${assetSymbol}`;
 
       const hash = await factoryLib.createSyndicate({
         metadataURI: opts.metadataUri,
         asset,
         name: opts.name,
-        symbol: opts.symbol,
+        symbol,
         maxPerTx: parseUnits(opts.maxPerTx, decimals),
         maxDailyTotal: parseUnits(opts.maxDaily, decimals),
         maxBorrowRatio: BigInt(opts.borrowRatio),
