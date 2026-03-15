@@ -20,6 +20,7 @@ import * as registryLib from "./lib/registry.js";
 import { registerChatCommands } from "./commands/chat.js";
 import { registerVeniceCommands } from "./commands/venice.js";
 import { registerAllowanceCommands } from "./commands/allowance.js";
+import { registerIdentityCommands } from "./commands/identity.js";
 import { getXmtpClient, createSyndicateGroup, getGroup, addMember, sendEnvelope, removeMember } from "./lib/xmtp.js";
 import { setTextRecord, resolveVaultSyndicate } from "./lib/ens.js";
 import { cacheGroupId } from "./lib/config.js";
@@ -677,5 +678,8 @@ registerVeniceCommands(program);
 
 // ── Allowance commands ──
 registerAllowanceCommands(program);
+
+// ── Identity commands ──
+registerIdentityCommands(program);
 
 program.parse();

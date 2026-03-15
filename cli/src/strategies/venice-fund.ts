@@ -119,6 +119,12 @@ export function buildFundBatch(
   minVVV: bigint,
   swapPath: Hex | null,
 ): BatchCall[] {
+  // Guard: fail early if Venice is not deployed (e.g. on testnet)
+  const ZERO = "0x0000000000000000000000000000000000000000";
+  if (VENICE().VVV === ZERO || VENICE().STAKING === ZERO) {
+    throw new Error("Venice (VVV/sVVV) is not deployed on this network — venice fund requires Venice staking contracts");
+  }
+
   const assetAmount = parseUnits(config.amount, assetDecimals);
   const isWeth = assetAddress.toLowerCase() === TOKENS().WETH.toLowerCase();
   const calls: BatchCall[] = [];

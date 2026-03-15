@@ -141,6 +141,12 @@ export function buildEntryBatch(
   amountOutMinimum: bigint, // Computed by CLI from Uniswap quote
   borrowDecimals: number, // Decimals of the borrow token (read on-chain by caller)
 ): BatchCall[] {
+  // Guard: fail early if Moonwell is not deployed (e.g. on testnet)
+  const ZERO = "0x0000000000000000000000000000000000000000";
+  if (MOONWELL().mWETH === ZERO || MOONWELL().mUSDC === ZERO || MOONWELL().COMPTROLLER === ZERO) {
+    throw new Error("Moonwell is not deployed on this network — levered swap requires Moonwell lending markets");
+  }
+
   const collateral = parseEther(config.collateralAmount); // WETH = 18 decimals
   const borrow = parseUnits(config.borrowAmount, borrowDecimals);
 
@@ -239,6 +245,12 @@ export function buildExitBatch(
   amountOutMinimum: bigint, // Min USDC from selling the token
   borrowBalance: bigint, // Current borrow balance to repay (includes interest)
 ): BatchCall[] {
+  // Guard: fail early if Moonwell is not deployed (e.g. on testnet)
+  const ZERO = "0x0000000000000000000000000000000000000000";
+  if (MOONWELL().mWETH === ZERO || MOONWELL().mUSDC === ZERO) {
+    throw new Error("Moonwell is not deployed on this network — levered swap requires Moonwell lending markets");
+  }
+
   const collateral = parseEther(config.collateralAmount); // WETH = 18 decimals
 
   const calls: BatchCall[] = [

@@ -17,6 +17,7 @@ export interface SherwoodConfig {
   xmtpInboxId?: string;
   groupCache: Record<string, string>; // subdomain → XMTP group ID
   veniceApiKey?: string; // Venice AI inference API key
+  agentId?: number; // ERC-8004 identity token ID
 }
 
 export function loadConfig(): SherwoodConfig {
@@ -56,4 +57,14 @@ export function setVeniceApiKey(apiKey: string): void {
 
 export function getVeniceApiKey(): string | undefined {
   return loadConfig().veniceApiKey;
+}
+
+export function setAgentId(agentId: number): void {
+  const config = loadConfig();
+  config.agentId = agentId;
+  saveConfig(config);
+}
+
+export function getAgentId(): number | undefined {
+  return loadConfig().agentId;
 }

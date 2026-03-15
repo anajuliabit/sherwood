@@ -38,6 +38,15 @@ export function getWalletClient() {
   return _walletClient as ReturnType<typeof createWalletClient>;
 }
 
+/**
+ * Reset cached clients. Required for tests that call setNetwork()
+ * after a client was already created.
+ */
+export function resetClients() {
+  _publicClient = null;
+  _walletClient = null;
+}
+
 export function getAccount() {
   const key = process.env.PRIVATE_KEY;
   if (!key) {
