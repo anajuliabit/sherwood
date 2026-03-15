@@ -31,3 +31,47 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cli
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install
+        run: npm install
+
+      - name: Unit Tests
+        run: npm run test:unit
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    defaults:
+      run:
+        working-directory: cli
+    env:
+      BASE_SEPOLIA_RPC_URL: ${{ secrets.BASE_SEPOLIA_RPC_URL }}
+      VAULT_ADDRESS_TESTNET: ${{ secrets.VAULT_ADDRESS_TESTNET }}
+      FACTORY_ADDRESS_TESTNET: ${{ secrets.FACTORY_ADDRESS_TESTNET }}
+      REGISTRY_ADDRESS_TESTNET: ${{ secrets.REGISTRY_ADDRESS_TESTNET }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install
+        run: npm install
+
+      - name: Integration Tests
+        run: npm run test:integration
