@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/skill.md',
-        destination: 'https://raw.githubusercontent.com/imthatcarlos/sherwood/refs/heads/master/skill/SKILL.md',
+        destination: 'https://raw.githubusercontent.com/imthatcarlos/sherwood/refs/heads/main/skill/SKILL.md',
       }
     ];
   },
