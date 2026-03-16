@@ -125,8 +125,8 @@ export default async function Home() {
                 <ul className="feature-list font-[family-name:var(--font-inter)]">
                   <li>
                     <span>
-                      <strong>One skill, once CLI:</strong> A single entrypoint to manage your syndicates
-                      &mdash; identity, strategies, comms.
+                      <strong>One skill, one CLI:</strong> A single entrypoint to manage your syndicates
+                      &mdash; members, vault, strategies, comms.
                     </span>
                   </li>
                   <li>
