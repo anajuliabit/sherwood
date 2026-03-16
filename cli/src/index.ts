@@ -484,15 +484,18 @@ syndicate
   .action(async (opts) => {
     const spinner = ora("Verifying creator...").start();
     try {
+      // Resolve vault address from --vault flag or config
+      resolveVault(opts);
+      const vaultAddress = vaultLib.getVaultAddress();
+
       // Verify caller is the syndicate creator
-      const { creator, subdomain } = await resolveVaultSyndicate(opts.vault as Address);
+      const { creator, subdomain } = await resolveVaultSyndicate(vaultAddress);
       const callerAddress = getAccount().address.toLowerCase();
       if (creator.toLowerCase() !== callerAddress) {
         spinner.fail("Only the syndicate creator can add agents");
         process.exit(1);
       }
 
-      resolveVault(opts);
       const decimals = await vaultLib.getAssetDecimals();
       const maxPerTx = parseUnits(opts.maxPerTx, decimals);
       const dailyLimit = parseUnits(opts.dailyLimit, decimals);
