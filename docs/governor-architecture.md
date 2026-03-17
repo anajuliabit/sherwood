@@ -291,7 +291,7 @@ No. Once submitted, proposal params are immutable. If an agent wants different t
 
 One governor manages multiple vaults. Each vault sets the governor as its trusted governance contract. Proposals target a specific vault. Only that vault's shareholders vote.
 
-**Bootstrap:** On initial deployment, the owner can add the first vault(s) directly. After that, adding/removing vaults goes through governance proposals (VaultManagement type).
+**Vault management is owner-controlled** — owner adds/removes vaults via `addVault` / `removeVault`. This is consistent with parameters being owner-controlled (global settings that affect all vaults).
 
 ---
 
@@ -345,52 +345,26 @@ UUPS upgradeable. Holds all governance logic.
   - Frees `capitalRequired` from `totalCapitalAllocated`
 - `cancelProposal(proposalId)` — proposer can cancel before voting ends
 - `emergencyCancel(proposalId)` — owner can cancel anytime before settlement
-- **Views**: `getProposal`, `getProposalState`, `getVoteWeight`, `hasVoted`, `proposalCount`, `getGovernorParams`
+- **Setters** (onlyOwner): `setVotingPeriod`, `setExecutionWindow`, `setQuorumBps`, `setMaxPerformanceFeeBps`, `setMaxStrategyDuration`, `addVault`, `removeVault`
+- **Views**: `getProposal`, `getProposalState`, `getVoteWeight`, `hasVoted`, `proposalCount`, `getGovernorParams`, `getRegisteredVaults`
 
-#### Self-governed parameter changes
+#### Why parameters are owner-controlled (not self-governed)
 
-Governor parameters are **not owner-controlled**. Changing them requires a proposal and shareholder vote — the governor governs itself.
+Governor parameters (votingPeriod, quorumBps, etc.) are **global** — they affect all vaults. But voting power is **per-vault** (only target vault shareholders vote). There's no fair way to decide which vault's shareholders get to change global settings. So parameters stay owner-controlled.
 
-**Parameter change proposal flow:**
-1. Any shareholder (or registered agent) calls `proposeParameterChange(paramType, newValue, metadataURI)`
-2. Shareholders vote YES/NO (same mechanics as strategy proposals)
-3. If approved → parameter updates automatically on execution
+Shareholders govern **what happens with their money** (strategy proposals). The owner governs **the rules of the game** (governor parameters, vault registry).
 
-**Proposal types (enum):**
-```solidity
-enum ProposalType {
-    Strategy,        // agent executes a trade on a specific vault
-    ParameterChange, // change a governor setting
-    VaultManagement  // add or remove a vault from the governor
-}
-```
-
-**Parameter change struct:**
-```solidity
-struct ParameterChange {
-    ParameterType paramType;  // which parameter
-    uint256 newValue;         // new value
-}
-
-enum ParameterType {
-    VotingPeriod,
-    ExecutionWindow,
-    QuorumBps,
-    MaxPerformanceFeeBps,
-    MaxStrategyDuration
-}
-```
-
-**Safety bounds** (hardcoded, not changeable by governance):
+**Safety bounds** (hardcoded, owner cannot exceed):
 - `votingPeriod`: min 1 hour, max 30 days
 - `executionWindow`: min 1 hour, max 7 days
 - `quorumBps`: min 1000 (10%), max 10000 (100%)
 - `maxPerformanceFeeBps`: min 0, max 5000 (50%)
 - `maxStrategyDuration`: min 1 hour, max 365 days
 
-These bounds prevent governance attacks (e.g. setting quorum to 0% or voting period to 1 second).
-
-**Emergency override:** Owner retains `emergencyCancel` on any proposal (strategy or parameter) as a safety valve. But cannot change parameters directly — must go through governance.
+**Emergency powers** (onlyOwner):
+- `emergencyCancel(proposalId)` — cancel any proposal before settlement
+- Parameter setters — change governor settings within safety bounds
+- `addVault` / `removeVault` — manage vault registry
 
 ### Existing Contract Changes
 
