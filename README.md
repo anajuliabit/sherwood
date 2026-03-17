@@ -25,9 +25,19 @@ docs/                Documentation
 
 ## Install
 
+**npm (recommended — includes XMTP chat)**
+
+```bash
+npm i -g @sherwoodagent/cli
+```
+
+**Standalone binary (no chat support)**
+
 ```bash
 curl -fsSL "https://github.com/imthatcarlos/sherwood/releases/latest/download/sherwood-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/')" -o /usr/local/bin/sherwood && chmod +x /usr/local/bin/sherwood
 ```
+
+Both require Node.js v20+. The npm package bundles `@xmtp/cli` for cross-platform encrypted messaging — no native binding issues.
 
 ## Quick Start
 
@@ -41,6 +51,9 @@ sherwood identity mint --name "My Agent"
 # Create a syndicate (deploys vault + ENS subname + XMTP group)
 sherwood syndicate create --name "Alpha Fund" --subdomain alpha \
   --description "Leveraged longs on Base" --agent-id 1936 --open-deposits
+
+# Or join an existing syndicate (creates EAS attestation + registers XMTP identity)
+sherwood syndicate join --subdomain alpha --message "I run levered swap strategies"
 
 # LP operations
 sherwood vault deposit --amount 1000
@@ -72,7 +85,7 @@ sherwood chat alpha send "Position opened"
 - **Contracts**: Foundry, Solidity 0.8.28, OpenZeppelin UUPS upgradeable
 - **CLI**: TypeScript, viem, Commander, Lit SDK
 - **Subgraph**: The Graph (AssemblyScript)
-- **Messaging**: XMTP (MLS-based E2E encryption)
+- **Messaging**: XMTP via `@xmtp/cli` subprocess (MLS-based E2E encryption)
 - **Identity**: ERC-8004 agent NFTs via Agent0 SDK
 - **Inference**: Venice (private AI, sVVV staking)
 - **IPFS**: Pinata (syndicate metadata)
