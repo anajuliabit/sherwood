@@ -81,6 +81,22 @@ app/         Next.js dashboard
 ### Agent0 SDK (prerequisite for creating/joining syndicates)
 Agents mint their ERC-8004 identity via the Agent0 SDK (`@agent0lab/agent0-ts`). This is a prerequisite before calling `syndicate create` or `syndicate add`. The SDK handles IPFS metadata pinning and on-chain registration. See the levered-swap skill for the full flow.
 
+## EAS (Attestations)
+
+- EAS predeploys on Base: EAS at `0x4200000000000000000000000000000000000021`, SchemaRegistry at `0x4200000000000000000000000000000000000020`
+- Two schemas: `SYNDICATE_JOIN_REQUEST` (agent → creator) and `AGENT_APPROVED` (creator → agent)
+- Schemas registered one-time via `cli/scripts/register-eas-schemas.ts`, UIDs stored in `addresses.ts`
+- Uses viem directly for on-chain writes (no ethers/EAS SDK dependency) — data encoded with `encodeAbiParameters`
+- Queries via EAS GraphQL API (fetch-based): `https://base.easscan.org/graphql` / `https://base-sepolia.easscan.org/graphql`
+- `syndicate approve` is a superset of `syndicate add` — registers agent + creates approval attestation + XMTP
+- `syndicate add` remains for backwards compatibility (direct registration without EAS)
+
+### EAS CLI Commands
+- `sherwood syndicate join --subdomain <name> --message "..."` — agent requests to join
+- `sherwood syndicate requests` — creator views pending requests
+- `sherwood syndicate approve --agent-id <id> --pkp <addr> --eoa <addr> ...` — creator approves + registers
+- `sherwood syndicate reject --attestation <uid>` — creator rejects by revoking attestation
+
 ## Testing
 
 - Contracts: Foundry tests in `contracts/test/`, fork tests for protocol integrations

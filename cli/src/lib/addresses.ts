@@ -125,6 +125,30 @@ const BASE_SEPOLIA_VENICE = {
   DIEM: "0x0000000000000000000000000000000000000000" as Address,
 } as const;
 
+// ── EAS (Ethereum Attestation Service) — Base predeploys ──
+
+const BASE_EAS = {
+  EAS: "0x4200000000000000000000000000000000000021" as Address,
+  SCHEMA_REGISTRY: "0x4200000000000000000000000000000000000020" as Address,
+} as const;
+
+const BASE_SEPOLIA_EAS = {
+  EAS: "0x4200000000000000000000000000000000000021" as Address,
+  SCHEMA_REGISTRY: "0x4200000000000000000000000000000000000020" as Address,
+} as const;
+
+// ── EAS Schema UIDs (populated after running scripts/register-eas-schemas.ts) ──
+
+const BASE_EAS_SCHEMAS = {
+  SYNDICATE_JOIN_REQUEST: "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`,
+  AGENT_APPROVED: "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`,
+} as const;
+
+const BASE_SEPOLIA_EAS_SCHEMAS = {
+  SYNDICATE_JOIN_REQUEST: "0x1e7ce17b16233977ba913b156033e98f52029f4bee273a4abefe6c15ce11d5ef" as `0x${string}`,
+  AGENT_APPROVED: "0x1013f7b38f433b2a93fc5ac162482813081c64edd67cea9b5a90698531ddb607" as `0x${string}`,
+} as const;
+
 // ── Exports (functions, resolved at call time) ──
 
 export function TOKENS() {
@@ -157,4 +181,12 @@ export function VENICE() {
 
 export function SHERWOOD() {
   return getNetwork() === "base" ? BASE_SHERWOOD : BASE_SEPOLIA_SHERWOOD;
+}
+
+export function EAS_CONTRACTS() {
+  return getNetwork() === "base" ? BASE_EAS : BASE_SEPOLIA_EAS;
+}
+
+export function EAS_SCHEMAS() {
+  return getNetwork() === "base" ? BASE_EAS_SCHEMAS : BASE_SEPOLIA_EAS_SCHEMAS;
 }

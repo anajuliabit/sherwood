@@ -25,7 +25,9 @@ import type { SyndicateMetadata } from "./lib/ipfs.js";
 import { registerVeniceCommands } from "./commands/venice.js";
 import { registerAllowanceCommands } from "./commands/allowance.js";
 import { registerIdentityCommands } from "./commands/identity.js";
-import { setTextRecord, resolveVaultSyndicate } from "./lib/ens.js";
+import { setTextRecord, resolveVaultSyndicate, resolveSyndicate } from "./lib/ens.js";
+import * as easLib from "./lib/eas.js";
+import { EAS_SCHEMAS } from "./lib/addresses.js";
 
 // XMTP has native bindings that crash on import if not installed correctly.
 // Lazy-load to avoid breaking non-chat commands (config, identity, vault, etc.).
@@ -569,6 +571,239 @@ syndicate
       }
     } catch (err) {
       spinner.fail("Failed to toggle spectator mode");
+      console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+      process.exit(1);
+    }
+  });
+
+// ── EAS Join Request / Approval Commands ──
+
+syndicate
+  .command("join")
+  .description("Request to join a syndicate (creates an EAS attestation)")
+  .requiredOption("--subdomain <name>", "Syndicate subdomain to join")
+  .option("--message <text>", "Message to the creator", "Requesting to join your syndicate")
+  .action(async (opts) => {
+    const spinner = ora("Resolving syndicate...").start();
+    try {
+      const agentId = getAgentId();
+      if (!agentId) {
+        spinner.fail("No agent identity found. Run 'sherwood identity mint' first.");
+        process.exit(1);
+      }
+
+      const syndicate = await resolveSyndicate(opts.subdomain);
+
+      spinner.text = "Creating join request attestation...";
+      const { uid, hash } = await easLib.createJoinRequest(
+        syndicate.id,
+        BigInt(agentId),
+        syndicate.vault,
+        syndicate.creator,
+        opts.message,
+      );
+
+      spinner.succeed("Join request created");
+      console.log();
+      console.log(LABEL("  ◆ Join Request Submitted"));
+      SEP();
+      console.log(W(`  Syndicate:    ${G(`${opts.subdomain}.sherwoodagent.eth`)}`));
+      console.log(W(`  Agent ID:     #${agentId}`));
+      console.log(W(`  Creator:      ${DIM(syndicate.creator)}`));
+      console.log(W(`  Attestation:  ${DIM(uid)}`));
+      console.log(W(`  EAS Scan:     ${DIM(easLib.getEasScanUrl(uid))}`));
+      console.log(W(`  Explorer:     ${DIM(getExplorerUrl(hash))}`));
+      SEP();
+      console.log(G("  ✓ The creator can review with:"));
+      console.log(DIM(`    sherwood syndicate requests --subdomain ${opts.subdomain}`));
+      console.log();
+    } catch (err) {
+      spinner.fail("Join request failed");
+      console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+      process.exit(1);
+    }
+  });
+
+syndicate
+  .command("requests")
+  .description("View pending join requests for a syndicate (creator only)")
+  .option("--subdomain <name>", "Syndicate subdomain")
+  .option("--vault <address>", "Vault address (default: from config)")
+  .action(async (opts) => {
+    const spinner = ora("Loading join requests...").start();
+    try {
+      let creatorAddress: Address;
+      let subdomain: string;
+
+      if (opts.subdomain) {
+        const syndicateInfo = await resolveSyndicate(opts.subdomain);
+        creatorAddress = syndicateInfo.creator;
+        subdomain = opts.subdomain;
+      } else {
+        resolveVault(opts);
+        const vaultAddress = vaultLib.getVaultAddress();
+        const syndicateInfo = await resolveVaultSyndicate(vaultAddress);
+        creatorAddress = syndicateInfo.creator;
+        subdomain = syndicateInfo.subdomain;
+      }
+
+      // Verify caller is creator
+      const callerAddress = getAccount().address.toLowerCase();
+      if (creatorAddress.toLowerCase() !== callerAddress) {
+        spinner.fail("Only the syndicate creator can view join requests");
+        process.exit(1);
+      }
+
+      spinner.text = "Querying EAS attestations...";
+      const requests = await easLib.queryJoinRequests(creatorAddress);
+
+      spinner.stop();
+
+      if (requests.length === 0) {
+        console.log(DIM("\n  No pending join requests.\n"));
+        return;
+      }
+
+      console.log();
+      console.log(LABEL(`  ◆ Pending Join Requests (${requests.length})`));
+      SEP();
+
+      for (let i = 0; i < requests.length; i++) {
+        const req = requests[i];
+        const date = new Date(req.time * 1000).toLocaleString();
+        console.log(W(`  ${i + 1}. Agent #${req.decoded.agentId} ${DIM(`(${req.attester})`)}`));
+        console.log(DIM(`     Message:     "${req.decoded.message}"`));
+        console.log(DIM(`     Requested:   ${date}`));
+        console.log(DIM(`     Attestation: ${req.uid}`));
+        console.log();
+      }
+
+      console.log(G("  To approve:"));
+      console.log(DIM(`    sherwood syndicate approve --agent-id <id> --pkp <addr> --eoa <addr> --max-per-tx <amt> --daily-limit <amt>`));
+      console.log(G("  To reject:"));
+      console.log(DIM(`    sherwood syndicate reject --attestation <uid>`));
+      console.log();
+    } catch (err) {
+      spinner.fail("Failed to load requests");
+      console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+      process.exit(1);
+    }
+  });
+
+syndicate
+  .command("approve")
+  .description("Approve an agent join request (registers agent + creates EAS approval)")
+  .option("--vault <address>", "Vault address (default: from config)")
+  .option("--subdomain <name>", "Syndicate subdomain (alternative to --vault)")
+  .requiredOption("--agent-id <id>", "Agent's ERC-8004 identity token ID")
+  .requiredOption("--pkp <address>", "Agent PKP address")
+  .requiredOption("--eoa <address>", "Operator EOA address")
+  .requiredOption("--max-per-tx <amount>", "Max per transaction (in asset units)")
+  .requiredOption("--daily-limit <amount>", "Daily limit (in asset units)")
+  .option("--revoke-request <uid>", "Revoke the join request attestation after approval")
+  .action(async (opts) => {
+    const spinner = ora("Verifying creator...").start();
+    try {
+      // Resolve vault from subdomain or --vault/config
+      if (opts.subdomain && !opts.vault) {
+        const syndicateInfo = await resolveSyndicate(opts.subdomain);
+        vaultLib.setVaultAddress(syndicateInfo.vault);
+      } else {
+        resolveVault(opts);
+      }
+      const vaultAddress = vaultLib.getVaultAddress();
+
+      // Verify caller is creator
+      const { creator, subdomain, id: syndicateId } = await resolveVaultSyndicate(vaultAddress);
+      const callerAddress = getAccount().address.toLowerCase();
+      if (creator.toLowerCase() !== callerAddress) {
+        spinner.fail("Only the syndicate creator can approve agents");
+        process.exit(1);
+      }
+
+      const decimals = await vaultLib.getAssetDecimals();
+      const maxPerTx = parseUnits(opts.maxPerTx, decimals);
+      const dailyLimit = parseUnits(opts.dailyLimit, decimals);
+
+      // 1. Register agent on-chain (same as syndicate add)
+      spinner.text = "Registering agent on vault...";
+      const regHash = await vaultLib.registerAgent(
+        BigInt(opts.agentId),
+        opts.pkp as Address,
+        opts.eoa as Address,
+        maxPerTx,
+        dailyLimit,
+      );
+      console.log(DIM(`  Agent registered: ${getExplorerUrl(regHash)}`));
+
+      // 2. Create AGENT_APPROVED attestation
+      spinner.text = "Creating approval attestation...";
+      const { uid: approvalUid } = await easLib.createApproval(
+        syndicateId,
+        BigInt(opts.agentId),
+        vaultAddress,
+        opts.eoa as Address,
+      );
+
+      // 3. Optionally revoke the join request
+      if (opts.revokeRequest) {
+        spinner.text = "Revoking join request...";
+        await easLib.revokeAttestation(
+          EAS_SCHEMAS().SYNDICATE_JOIN_REQUEST,
+          opts.revokeRequest as `0x${string}`,
+        );
+      }
+
+      // 4. Auto-add agent to XMTP chat group
+      try {
+        spinner.text = "Adding to chat...";
+        const xmtp = await loadXmtp();
+        const xmtpClient = await xmtp.getXmtpClient();
+        const group = await xmtp.getGroup(xmtpClient, subdomain);
+        await xmtp.addMember(group, opts.pkp);
+        await xmtp.sendEnvelope(group, {
+          type: "AGENT_REGISTERED",
+          agent: { erc8004Id: Number(opts.agentId), address: opts.pkp },
+          syndicate: subdomain,
+          timestamp: Math.floor(Date.now() / 1000),
+        });
+        console.log(DIM(`  Added to chat: ${subdomain}`));
+      } catch {
+        console.warn(chalk.yellow("  ⚠ Could not add agent to chat group"));
+      }
+
+      spinner.succeed("Agent approved and registered");
+      console.log();
+      console.log(LABEL("  ◆ Agent Approved"));
+      SEP();
+      console.log(W(`  Agent ID:     #${opts.agentId}`));
+      console.log(W(`  PKP:          ${G(opts.pkp)}`));
+      console.log(W(`  EOA:          ${G(opts.eoa)}`));
+      console.log(W(`  Approval:     ${DIM(approvalUid)}`));
+      console.log(W(`  EAS Scan:     ${DIM(easLib.getEasScanUrl(approvalUid))}`));
+      SEP();
+    } catch (err) {
+      spinner.fail("Approval failed");
+      console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+      process.exit(1);
+    }
+  });
+
+syndicate
+  .command("reject")
+  .description("Reject a join request by revoking its attestation")
+  .requiredOption("--attestation <uid>", "Join request attestation UID to revoke")
+  .action(async (opts) => {
+    const spinner = ora("Revoking attestation...").start();
+    try {
+      const hash = await easLib.revokeAttestation(
+        EAS_SCHEMAS().SYNDICATE_JOIN_REQUEST,
+        opts.attestation as `0x${string}`,
+      );
+      spinner.succeed("Join request rejected");
+      console.log(DIM(`  ${getExplorerUrl(hash)}`));
+    } catch (err) {
+      spinner.fail("Rejection failed");
       console.error(chalk.red(err instanceof Error ? err.message : String(err)));
       process.exit(1);
     }

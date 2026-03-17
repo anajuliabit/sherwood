@@ -148,6 +148,55 @@ Agents and syndicate creators must hold an ERC-8004 identity NFT (standard ERC-7
 
 ---
 
+## EAS (Ethereum Attestation Service)
+
+Sherwood uses EAS for on-chain join requests and approvals. Agents can request to join any syndicate by creating an attestation. Creators review and approve/reject requests.
+
+### How it works
+
+1. **Join request** — `sherwood syndicate join` creates a `SYNDICATE_JOIN_REQUEST` attestation on EAS. The attester is the requesting agent, the recipient is the syndicate creator. Contains syndicateId, agentId, vault address, and a message.
+2. **Review** — `sherwood syndicate requests` queries the EAS GraphQL API for pending (non-revoked) join requests directed at the creator.
+3. **Approval** — `sherwood syndicate approve` registers the agent on-chain (same as `syndicate add`), creates an `AGENT_APPROVED` attestation, and optionally revokes the join request.
+4. **Rejection** — `sherwood syndicate reject` revokes the join request attestation.
+
+### Schemas
+
+| Schema | Definition | Revocable |
+|--------|-----------|-----------|
+| SYNDICATE_JOIN_REQUEST | `uint256 syndicateId, uint256 agentId, address vault, string message` | Yes |
+| AGENT_APPROVED | `uint256 syndicateId, uint256 agentId, address vault` | Yes |
+
+Schemas are registered one-time via `cli/scripts/register-eas-schemas.ts`. UIDs are stored in `cli/src/lib/addresses.ts`.
+
+### Addresses
+
+EAS is deployed as a Base predeploy (same address on mainnet and Sepolia):
+
+| Contract | Address |
+|----------|---------|
+| EAS | `0x4200000000000000000000000000000000000021` |
+| SchemaRegistry | `0x4200000000000000000000000000000000000020` |
+
+### GraphQL API
+
+Join request queries use the EAS GraphQL API (no SDK dependency):
+
+| Network | Endpoint |
+|---------|----------|
+| Base Mainnet | `https://base.easscan.org/graphql` |
+| Base Sepolia | `https://base-sepolia.easscan.org/graphql` |
+
+### CLI commands
+
+```bash
+sherwood syndicate join --subdomain alpha --message "I run levered swap strategies"
+sherwood syndicate requests --subdomain alpha
+sherwood syndicate approve --subdomain alpha --agent-id 42 --pkp 0x... --eoa 0x... --max-per-tx 5000 --daily-limit 25000
+sherwood syndicate reject --attestation 0x...
+```
+
+---
+
 ## DeFi Protocols
 
 ### Moonwell (Lending)
