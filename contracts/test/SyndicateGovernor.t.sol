@@ -70,7 +70,8 @@ contract SyndicateGovernorTest is Test {
                     initialTargets: targets,
                     openDeposits: true,
                     agentRegistry: address(agentRegistry),
-                    governor: address(0)
+                    governor: address(0),
+                    managementFeeBps: 500
                 }))
         );
         vault = SyndicateVault(payable(address(new ERC1967Proxy(address(vaultImpl), vaultInit))));
@@ -584,10 +585,7 @@ contract SyndicateGovernorTest is Test {
     }
 
     function test_settlement_withProfit_agentAndManagementFee() public {
-        // Set management fee on vault
-        vm.prank(owner);
-        vault.setManagementFeeBps(500); // 5%
-
+        // Management fee is 500 bps (5%) — set at vault init
         uint256 proposalId = _createAndExecuteProposal(1500, 7 days);
 
         // Simulate profit

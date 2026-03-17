@@ -35,7 +35,6 @@ interface ISyndicateVault {
     error NotGovernor();
     error RedemptionsLocked();
     error InvalidGovernor();
-    error ManagementFeeTooHigh();
 
     // ── Init Params ──
     struct InitParams {
@@ -49,6 +48,7 @@ interface ISyndicateVault {
         bool openDeposits;
         address agentRegistry;
         address governor;
+        uint256 managementFeeBps;
     }
 
     // ── Syndicate-Level Caps (hard limits for ALL agents) ──
@@ -113,7 +113,6 @@ interface ISyndicateVault {
     function unlockRedemptions() external;
     function executeGovernorBatch(BatchExecutorLib.Call[] calldata calls) external;
     function transferPerformanceFee(address asset, address to, uint256 amount) external;
-    function setManagementFeeBps(uint256 feeBps) external;
     function governor() external view returns (address);
     function redemptionsLocked() external view returns (bool);
     function managementFeeBps() external view returns (uint256);
@@ -151,5 +150,4 @@ interface ISyndicateVault {
     event GovernorUpdated(address indexed oldGovernor, address indexed newGovernor);
     event RedemptionsLockedEvent();
     event RedemptionsUnlockedEvent();
-    event ManagementFeeBpsUpdated(uint256 oldValue, uint256 newValue);
 }

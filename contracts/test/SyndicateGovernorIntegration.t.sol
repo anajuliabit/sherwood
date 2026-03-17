@@ -83,7 +83,8 @@ contract SyndicateGovernorIntegrationTest is Test {
                     initialTargets: targets,
                     openDeposits: true,
                     agentRegistry: address(agentRegistry),
-                    governor: address(0)
+                    governor: address(0),
+                    managementFeeBps: 0
                 }))
         );
         vault = SyndicateVault(payable(address(new ERC1967Proxy(address(vaultImpl), vaultInit))));

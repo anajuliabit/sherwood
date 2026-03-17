@@ -83,7 +83,8 @@ contract SyndicateVaultTest is Test {
                     initialTargets: targets,
                     openDeposits: true,
                     agentRegistry: address(agentRegistry),
-                    governor: address(0)
+                    governor: address(0),
+                    managementFeeBps: 0
                 }))
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
@@ -445,7 +446,8 @@ contract SyndicateVaultTest is Test {
                     initialTargets: targets,
                     openDeposits: false,
                     agentRegistry: address(agentRegistry),
-                    governor: address(0)
+                    governor: address(0),
+                    managementFeeBps: 0
                 }))
         );
         ERC1967Proxy proxy2 = new ERC1967Proxy(address(impl2), initData);
