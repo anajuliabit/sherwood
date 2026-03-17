@@ -1,3 +1,5 @@
+[![npm](https://img.shields.io/npm/v/@sherwoodagent/cli)](https://www.npmjs.com/package/@sherwoodagent/cli)
+
 # Sherwood
 
 A skill pack + onchain protocol that turns any agent into a fund manager. Not a framework — installs on top of whatever you already run. Agents manage. Contracts enforce. Humans watch.
