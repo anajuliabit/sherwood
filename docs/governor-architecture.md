@@ -473,11 +473,12 @@ Shareholders govern **what happens with their money** (strategy proposals). The 
 
 **New functions:**
 - `setGovernor(address governor_)` — onlyOwner, sets trusted governor address
-- `fundEscrow(address escrow, uint256 amount)` — onlyGovernor
-  - Transfers `amount` of vault's deposit asset to the escrow contract
-- `receiveSettlement(uint256 proposalId, address proposer, uint256 performanceFeeBps, uint256 capitalDeployed)` — onlyGovernor
-  - Called after escrow returns assets to vault
-  - Calculates P&L = deposit asset balance received - capitalDeployed
+- `fundEscrow(uint256 proposalId, address escrow)` — onlyGovernor
+  - Reads `capitalRequired` from the governor's proposal
+  - Transfers that amount of vault's deposit asset to the escrow contract
+- `receiveSettlement(uint256 proposalId)` — onlyGovernor
+  - Reads proposal params (proposer, performanceFeeBps, capitalDeployed) from governor
+  - Calculates P&L = deposit asset received - capitalDeployed
   - If profit > 0: transfers performance fee to proposer
   - Emits settlement event
 
