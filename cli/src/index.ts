@@ -595,6 +595,46 @@ syndicate
       }
 
       const syndicate = await resolveSyndicate(opts.subdomain);
+      const callerAddress = getAccount().address;
+
+      // Check if already registered as an agent on this vault
+      spinner.text = "Checking membership...";
+      vaultLib.setVaultAddress(syndicate.vault);
+      const alreadyAgent = await vaultLib.isAgent(callerAddress);
+      if (alreadyAgent) {
+        spinner.succeed("You are already a registered agent on this syndicate");
+        // Still ensure XMTP identity is ready
+        try {
+          const xmtp = await loadXmtp();
+          await xmtp.getXmtpClient();
+          console.log(chalk.dim("  XMTP identity ready"));
+        } catch {
+          console.warn(chalk.yellow("  ⚠ Could not initialize XMTP identity"));
+        }
+        return;
+      }
+
+      // Check for existing pending join request
+      spinner.text = "Checking pending requests...";
+      const pendingRequests = await easLib.queryJoinRequests(syndicate.creator);
+      const existingRequest = pendingRequests.find(
+        (r) => r.attester.toLowerCase() === callerAddress.toLowerCase()
+          && r.decoded.vault.toLowerCase() === syndicate.vault.toLowerCase(),
+      );
+      if (existingRequest) {
+        spinner.succeed("You already have a pending join request for this syndicate");
+        console.log(chalk.dim(`  Attestation: ${existingRequest.uid}`));
+        console.log(chalk.dim(`  Submitted:   ${new Date(existingRequest.time * 1000).toLocaleString()}`));
+        // Still ensure XMTP identity is ready
+        try {
+          const xmtp = await loadXmtp();
+          await xmtp.getXmtpClient();
+          console.log(chalk.dim("  XMTP identity ready"));
+        } catch {
+          console.warn(chalk.yellow("  ⚠ Could not initialize XMTP identity"));
+        }
+        return;
+      }
 
       spinner.text = "Creating join request attestation...";
       const { uid, hash } = await easLib.createJoinRequest(

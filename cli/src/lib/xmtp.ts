@@ -149,6 +149,22 @@ function execXmtpJson<T>(args: string[]): T {
   return JSON.parse(stdout) as T;
 }
 
+// ── Conversation sync ──
+
+let _conversationsSynced = false;
+
+/**
+ * Sync conversations from the network into the local XMTP DB.
+ * One-shot commands (send, messages, members) spawn a fresh process
+ * that may not have the group locally — this ensures it's available.
+ * Only runs once per process.
+ */
+function syncConversations(): void {
+  if (_conversationsSynced) return;
+  execXmtp(["conversations", "sync"]);
+  _conversationsSynced = true;
+}
+
 // ── Client ──
 
 export async function getXmtpClient(): Promise<string> {
@@ -238,6 +254,7 @@ export async function addMember(
   groupId: string,
   address: string,
 ): Promise<void> {
+  syncConversations();
   execXmtp(["conversation", "add-members", groupId, address]);
 }
 
@@ -245,6 +262,7 @@ export async function removeMember(
   groupId: string,
   address: string,
 ): Promise<void> {
+  syncConversations();
   execXmtp(["conversation", "remove-members", groupId, address]);
 }
 
@@ -254,6 +272,7 @@ export async function sendEnvelope(
   groupId: string,
   envelope: ChatEnvelope,
 ): Promise<void> {
+  syncConversations();
   const text = JSON.stringify(envelope);
   execXmtp(["conversation", "send-text", groupId, text]);
 }
@@ -349,6 +368,7 @@ export async function getRecentMessages(
   groupId: string,
   limit: number = 20,
 ): Promise<XmtpMessage[]> {
+  syncConversations();
   const raw = execXmtpJson<Array<Record<string, unknown>>>([
     "conversation",
     "messages",
@@ -375,6 +395,7 @@ export async function getRecentMessages(
 export async function getMembers(
   groupId: string,
 ): Promise<XmtpMember[]> {
+  syncConversations();
   const raw = execXmtpJson<Array<Record<string, unknown>>>([
     "conversation",
     "members",

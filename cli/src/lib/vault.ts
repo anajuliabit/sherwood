@@ -308,6 +308,19 @@ export async function approveDepositors(depositors: Address[]): Promise<Hex> {
 }
 
 /**
+ * Check if a PKP address is a registered agent on the vault.
+ */
+export async function isAgent(pkpAddress: Address): Promise<boolean> {
+  const client = getPublicClient();
+  return client.readContract({
+    address: getVaultAddress(),
+    abi: SYNDICATE_VAULT_ABI,
+    functionName: "isAgent",
+    args: [pkpAddress],
+  }) as Promise<boolean>;
+}
+
+/**
  * Check if an address is an approved depositor.
  */
 export async function isApprovedDepositor(depositor: Address): Promise<boolean> {
