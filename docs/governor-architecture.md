@@ -334,8 +334,51 @@ UUPS upgradeable. Holds all governance logic.
   - Frees `capitalRequired` from `totalCapitalAllocated`
 - `cancelProposal(proposalId)` — proposer can cancel before voting ends
 - `emergencyCancel(proposalId)` — owner can cancel anytime before settlement
-- **Setters** (onlyOwner): `setVotingPeriod`, `setExecutionWindow`, `setQuorumBps`, `setMaxPerformanceFeeBps`, `setMaxStrategyDuration`
-- **Views**: `getProposal`, `getProposalState`, `getVoteWeight`, `hasVoted`, `proposalCount`
+- **Views**: `getProposal`, `getProposalState`, `getVoteWeight`, `hasVoted`, `proposalCount`, `getGovernorParams`
+
+#### Self-governed parameter changes
+
+Governor parameters are **not owner-controlled**. Changing them requires a proposal and shareholder vote — the governor governs itself.
+
+**Parameter change proposal flow:**
+1. Any shareholder (or registered agent) calls `proposeParameterChange(paramType, newValue, metadataURI)`
+2. Shareholders vote YES/NO (same mechanics as strategy proposals)
+3. If approved → parameter updates automatically on execution
+
+**Proposal types (enum):**
+```solidity
+enum ProposalType {
+    Strategy,        // agent executes a trade
+    ParameterChange  // change a governor setting
+}
+```
+
+**Parameter change struct:**
+```solidity
+struct ParameterChange {
+    ParameterType paramType;  // which parameter
+    uint256 newValue;         // new value
+}
+
+enum ParameterType {
+    VotingPeriod,
+    ExecutionWindow,
+    QuorumBps,
+    MaxPerformanceFeeBps,
+    MaxStrategyDuration
+}
+```
+
+**Safety bounds** (hardcoded, not changeable by governance):
+- `votingPeriod`: min 1 hour, max 30 days
+- `executionWindow`: min 1 hour, max 7 days
+- `quorumBps`: min 1000 (10%), max 10000 (100%)
+- `maxPerformanceFeeBps`: min 0, max 5000 (50%)
+- `maxStrategyDuration`: min 1 hour, max 365 days
+
+These bounds prevent governance attacks (e.g. setting quorum to 0% or voting period to 1 second).
+
+**Emergency override:** Owner retains `emergencyCancel` on any proposal (strategy or parameter) as a safety valve. But cannot change parameters directly — must go through governance.
 
 ### Existing Contract Changes
 
