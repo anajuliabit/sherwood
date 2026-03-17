@@ -24,7 +24,7 @@ A governance system where agents propose strategies, vault shareholders vote, an
 3. If quorum + majority → Approved
 
 4. Agent executes within the mandate
-   - Can only use up to the approved capital
+   - Uses the vault's entire available balance
    - Can only call the approved target contracts
    - Must execute within the execution window
 
@@ -49,7 +49,6 @@ struct StrategyProposal {
     uint256 id;
     address proposer;              // agent address (must be registered in vault)
     string metadataURI;            // IPFS: full rationale, research, risk analysis
-    uint256 capitalRequired;       // vault capital requested (in asset terms, e.g. USDC)
     uint256 performanceFeeBps;     // agent's cut of profits (e.g. 1500 = 15%)
     address vault;                 // which vault this proposal targets
     BatchExecutorLib.Call[] calls; // full lifecycle: open + close position
@@ -82,7 +81,6 @@ This means:
 | vault | Agent (proposer) | Which vault this proposal targets |
 | calls | Agent (proposer) | Full lifecycle calls (open + close) — committed at proposal time |
 | splitIndex | Agent (proposer) | Where execute ends and settle begins in the calls array |
-| capitalRequired | Agent (proposer) | How much vault capital they need |
 | performanceFeeBps | Agent (proposer) | Their fee, capped by maxPerformanceFeeBps |
 | strategyDuration | Agent (proposer) | How long the position runs, capped by maxStrategyDuration |
 | metadataURI | Agent (proposer) | IPFS link to full strategy rationale |
@@ -253,7 +251,7 @@ struct StrategyPnLAttestation {
     address vault;
     address agent;
     int256 pnl;              // profit or loss in deposit asset terms
-    uint256 capitalDeployed;
+    uint256 capitalSnapshot;  // vault balance at execution time
     uint256 assetsReturned;
     uint256 performanceFee;
     uint256 duration;         // actual duration (execute → settle)
@@ -261,6 +259,24 @@ struct StrategyPnLAttestation {
 ```
 
 This creates an immutable on-chain track record for every agent. Anyone can query an agent's history of profits and losses before voting on their proposals. No separate reputation system needed — the attestations are the reputation.
+
+#### Manager Action Attestation
+
+When the vault owner intervenes (emergency settle or manual token recovery), a separate **EAS attestation** is minted to build the owner's track record as a responsible manager:
+
+```solidity
+// Schema: MANAGER_ACTION
+struct ManagerActionAttestation {
+    address vault;
+    address manager;            // vault owner
+    uint256 proposalId;         // related proposal (0 if manual recovery)
+    string actionType;          // "EMERGENCY_SETTLE" or "TOKEN_RECOVERY"
+    uint256 assetsRecovered;    // deposit asset returned to vault
+    uint256 timestamp;
+}
+```
+
+This lets depositors evaluate a vault owner's management history before depositing — how often they had to intervene, how much they recovered, and how quickly they acted.
 
 #### Full lifecycle in calls[]
 
@@ -299,9 +315,9 @@ struct StrategyProposal {
 }
 ```
 
-**Settlement should return to deposit asset.** After the unwind calls execute, the vault should hold the deposit asset (e.g. USDC) again. If non-deposit-asset tokens remain on the vault after settlement (something went wrong), the owner can manually handle them via `executeBatch` (owner-only).
+**Settlement should return to deposit asset.** After the unwind calls execute, the vault should hold the deposit asset (e.g. USDC) again. If non-deposit-asset tokens remain on the vault after settlement (something went wrong), the owner can manually handle them via `executeBatch` (owner-only). When the owner manually recovers stuck tokens, a **manager action attestation** (EAS) is minted — proving the owner intervened responsibly to protect depositor funds.
 
-**Stale parameters:** Since unwind calls are committed at proposal time, params like slippage tolerance and exact repayment amounts may be stale by settlement time. Agents should use generous slippage tolerances in their unwind calls. If unwind calls revert due to stale params, the owner can call `emergencySettle(proposalId, calls[])` with replacement unwind calls that work with current market conditions.
+**Stale parameters:** Since unwind calls are committed at proposal time, params like slippage tolerance and exact repayment amounts may be stale by settlement time. Agents should use generous slippage tolerances in their unwind calls. If unwind calls revert due to stale params, the owner can call `emergencySettle(proposalId, calls[])` with replacement unwind calls that work with current market conditions. A **manager action attestation** (EAS) is minted on emergency settle — proving the owner acted to close positions and return assets to depositors.
 
 ---
 
@@ -449,7 +465,7 @@ UUPS upgradeable. Holds all governance logic.
 - `initialize(owner, votingPeriod, executionWindow, quorumBps, maxPerformanceFeeBps, maxStrategyDuration, cooldownPeriod)`
 - `addVault(address vault)` — governance proposal (or owner during bootstrap)
 - `removeVault(address vault)` — governance proposal
-- `propose(vault, metadataURI, capitalRequired, performanceFeeBps, strategyDuration, calls[], splitIndex)` → returns proposalId
+- `propose(vault, metadataURI, performanceFeeBps, strategyDuration, calls[], splitIndex)` → returns proposalId
   - Vault must be registered in governor
   - Caller must be a registered agent in the vault (ERC-8004 identity verified at registration)
   - `performanceFeeBps ≤ maxPerformanceFeeBps`
@@ -592,7 +608,7 @@ Some existing vault tests will need updates for the new redemption lock behavior
 
 #### 7. CLI commands (new)
 
-- `sherwood proposal create --capital 5000 --fee 1500 --duration 7d --metadata ipfs://... --calls <encoded>`
+- `sherwood proposal create --fee 1500 --duration 7d --metadata ipfs://... --calls <encoded>`
 - `sherwood proposal list [--state active|approved|executed]`
 - `sherwood proposal show <id>` — full detail including decoded calls
 - `sherwood proposal vote --id 1 --support yes|no`
@@ -612,7 +628,7 @@ Some existing vault tests will need updates for the new redemption lock behavior
 - `ProposalExecution` entity: proposalId, timestamp, txHash
 - `ProposalSettlement` entity: proposalId, pnl, performanceFee
 
-- `PnLAttestation` entity: proposalId, agent, vault, pnl, capitalDeployed, assetsReturned, attestationUID
+- `PnLAttestation` entity: proposalId, agent, vault, pnl, capitalSnapshot, assetsReturned, attestationUID
 
 Event handlers for: `ProposalCreated`, `VoteCast`, `ProposalExecuted`, `ProposalSettled`, `ProposalCancelled`, `PnLAttestationCreated`
 
