@@ -39,28 +39,38 @@ A governance system where agents propose strategies, vault shareholders vote, an
 ```solidity
 struct StrategyProposal {
     uint256 id;
-    address proposer;           // agent address (must be registered in vault)
-    string metadataURI;         // IPFS: full rationale, research, risk analysis
-    uint256 capitalRequired;    // vault capital requested (in asset terms, e.g. USDC)
-    uint256 performanceFeeBps;  // agent's cut of profits (e.g. 1500 = 15%)
-    address[] targets;          // contract addresses the agent needs to call
-    uint256 votesFor;           // share-weighted votes in favor
-    uint256 votesAgainst;       // share-weighted votes against
-    uint256 snapshotTimestamp;  // block.timestamp at creation (for vote weight snapshot)
-    uint256 voteEnd;            // snapshotTimestamp + votingPeriod
-    uint256 executeBy;          // voteEnd + executionWindow
-    ProposalState state;        // Pending → Active → Approved → Executed → Settled
-                                // (or Rejected / Expired / Cancelled)
+    address proposer;              // agent address (must be registered in vault)
+    string metadataURI;            // IPFS: full rationale, research, risk analysis
+    uint256 capitalRequired;       // vault capital requested (in asset terms, e.g. USDC)
+    uint256 performanceFeeBps;     // agent's cut of profits (e.g. 1500 = 15%)
+    BatchExecutorLib.Call[] calls; // exact calls to execute (target, data, value)
+    uint256 votesFor;              // share-weighted votes in favor
+    uint256 votesAgainst;          // share-weighted votes against
+    uint256 snapshotTimestamp;     // block.timestamp at creation (for vote weight snapshot)
+    uint256 voteEnd;               // snapshotTimestamp + votingPeriod
+    uint256 executeBy;             // voteEnd + executionWindow
+    ProposalState state;           // Pending → Active → Approved → Executed → Settled
+                                   // (or Rejected / Expired / Cancelled)
 }
 ```
+
+### Calls are committed at proposal time, not execution time
+
+The exact `calls[]` (target, data, value) are part of the proposal. Shareholders vote on the precise on-chain actions that will be executed — not a vague description. At execution time, `executeProposal(proposalId)` takes **no arguments** — it replays the pre-approved calls. The agent cannot change what gets executed after the vote.
+
+This means:
+- Shareholders can inspect every calldata byte before voting
+- The metadataURI provides human-readable context ("borrow 5k USDC from Moonwell")
+- The calls[] provide machine-verifiable truth (the actual encoded function calls)
+- No bait-and-switch possible
 
 ### Who controls what
 
 | Parameter | Controlled by | Notes |
 |-----------|--------------|-------|
+| calls | Agent (proposer) | Exact on-chain calls to execute — committed at proposal time |
 | capitalRequired | Agent (proposer) | How much vault capital they need |
 | performanceFeeBps | Agent (proposer) | Their fee, capped by maxPerformanceFeeBps |
-| targets | Agent (proposer) | Which contracts they need to interact with |
 | metadataURI | Agent (proposer) | IPFS link to full strategy rationale |
 | votingPeriod | Governor (owner setter) | How long voting lasts |
 | executionWindow | Governor (owner setter) | Time after approval to execute |
@@ -121,15 +131,16 @@ struct StrategyProposal {
 
 ## Mandate Execution
 
-When a proposal is approved, the agent gets a **scoped mandate**:
+When a proposal is approved, the pre-committed calls are executed:
 
-1. Agent calls `executeProposal(proposalId, calls)` on the governor
-2. Governor verifies: proposal is Approved, caller is proposer, within execution window
-3. Governor calls vault's `executeProposalBatch(calls, capitalCap, allowedTargets)` 
-4. Vault enforces: total value ≤ capitalRequired, all targets in proposal's target list
-5. Vault delegatecalls BatchExecutorLib (same as regular executeBatch)
+1. Anyone calls `executeProposal(proposalId)` on the governor (no arguments beyond the ID)
+2. Governor verifies: proposal is Approved, within execution window
+3. Governor calls vault's `executeProposalBatch(proposal.calls)` with the stored calls
+4. Vault delegatecalls BatchExecutorLib (same as regular executeBatch)
 
-The mandate is **additive** to existing vault rules — proposal targets don't need to be in the vault's global allowlist. The governor authorizes them specifically for this proposal.
+**No new input from the agent at execution time.** The calls were locked in at proposal creation and voted on by shareholders. Execution is just replaying what was approved.
+
+Note: the proposal targets don't need to be in the vault's global allowlist — the governor authorizes them specifically for this proposal. This means agents can propose interacting with new protocols without needing the owner to add targets first.
 
 ---
 
