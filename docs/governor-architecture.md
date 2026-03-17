@@ -15,7 +15,7 @@ A governance system where agents propose strategies, vault shareholders vote, an
 ```
 1. Agent submits proposal
    "I'm a DeFi expert. I propose borrowing 5,000 USDC against the vault's WETH
-    collateral on Moonwell. Health factor drops to 2.1 (still safe). I'll deploy
+    collateral on Moonwell. Health factor will be 2.1 (safe). I'll deploy
     the borrowed USDC into Uniswap WETH/USDC LP. Expected APY: 12%.
     My performance fee: 15% of profits."
 
