@@ -325,9 +325,9 @@ contract SyndicateGovernorIntegrationTest is Test {
         uint256 supplyAmount = 50_000e6;
         uint256 borrowAmount = 25_000e6;
 
-        BatchExecutorLib.Call[] memory calls = new BatchExecutorLib.Call[](6);
+        BatchExecutorLib.Call[] memory calls = new BatchExecutorLib.Call[](7);
 
-        // Execute: supply + borrow
+        // Execute: supply + borrow (4 calls)
         calls[0] = BatchExecutorLib.Call({
             target: address(usdc), data: abi.encodeCall(usdc.approve, (address(mUsdc), supplyAmount)), value: 0
         });
@@ -343,16 +343,18 @@ contract SyndicateGovernorIntegrationTest is Test {
             target: address(mUsdc), data: abi.encodeWithSignature("borrow(uint256)", borrowAmount), value: 0
         });
 
-        // Settle: repay + redeem
+        // Settle: approve → repay → redeem (3 calls)
         calls[4] = BatchExecutorLib.Call({
             target: address(usdc), data: abi.encodeCall(usdc.approve, (address(mUsdc), borrowAmount)), value: 0
         });
-        // repayBorrow needs approval first, then the call
         calls[5] = BatchExecutorLib.Call({
             target: address(mUsdc), data: abi.encodeWithSignature("repayBorrow(uint256)", borrowAmount), value: 0
         });
+        calls[6] = BatchExecutorLib.Call({
+            target: address(mUsdc), data: abi.encodeWithSignature("redeemUnderlying(uint256)", supplyAmount), value: 0
+        });
 
-        // splitIndex = 4 (first 4 are execute, last 2 are settle)
+        // splitIndex = 4 (first 4 are execute, last 3 are settle)
         uint256 proposalId = _proposeVoteApprove(calls, 4, 1500, 7 days);
 
         // Snapshot vault balance before execution
@@ -371,24 +373,24 @@ contract SyndicateGovernorIntegrationTest is Test {
         // Simulate time passing (strategy duration)
         vm.warp(block.timestamp + 7 days);
 
-        // Settle — runs repay + redeem
+        // Settle — runs approve → repay → redeem
         vm.prank(random);
         governor.settleProposal(proposalId);
 
         // After settlement:
-        // - Borrow repaid (25k returned to mToken)
-        // - Vault balance: 75k - 25k repaid = 50k
-        // - mTokens still on vault (redeem not in calls — only repay)
-        // Note: We only did repayBorrow in settle, not redeemUnderlying
-        // So vault has 50k USDC + 50k mTokens
-        // P&L = 50k (current USDC) - 100k (snapshot) = -50k loss
-        // No fee on loss
+        // - Borrow repaid (25k)
+        // - Collateral redeemed (50k back to USDC)
+        // - Vault balance: 75k - 25k repaid + 50k redeemed = 100k (back to original)
+        // - P&L = 100k - 100k = 0 (no profit, no loss)
+        // - No fee
 
+        assertEq(usdc.balanceOf(address(vault)), 100_000e6);
+        assertEq(mUsdc.balanceOf(address(vault)), 0); // mTokens fully redeemed
         assertEq(uint256(governor.getProposalState(proposalId)), uint256(ISyndicateGovernor.ProposalState.Settled));
         assertFalse(vault.redemptionsLocked());
         assertEq(governor.getActiveProposal(address(vault)), 0);
 
-        // Agent gets no fee (loss scenario — USDC balance < snapshot)
+        // Agent gets no fee (zero P&L)
         assertEq(usdc.balanceOf(agent), 0);
     }
 
