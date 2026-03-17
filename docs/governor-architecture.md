@@ -44,6 +44,7 @@ struct StrategyProposal {
     uint256 capitalRequired;       // vault capital requested (in asset terms, e.g. USDC)
     uint256 performanceFeeBps;     // agent's cut of profits (e.g. 1500 = 15%)
     BatchExecutorLib.Call[] calls; // exact calls to execute (target, data, value)
+    uint256 strategyDuration;      // how long the position runs (seconds), capped by maxStrategyDuration
     uint256 votesFor;              // share-weighted votes in favor
     uint256 votesAgainst;          // share-weighted votes against
     uint256 snapshotTimestamp;     // block.timestamp at creation (for vote weight snapshot)
@@ -71,11 +72,13 @@ This means:
 | calls | Agent (proposer) | Exact on-chain calls to execute — committed at proposal time |
 | capitalRequired | Agent (proposer) | How much vault capital they need |
 | performanceFeeBps | Agent (proposer) | Their fee, capped by maxPerformanceFeeBps |
+| strategyDuration | Agent (proposer) | How long the position runs, capped by maxStrategyDuration |
 | metadataURI | Agent (proposer) | IPFS link to full strategy rationale |
 | votingPeriod | Governor (owner setter) | How long voting lasts |
 | executionWindow | Governor (owner setter) | Time after approval to execute |
 | quorumBps | Governor (owner setter) | Min participation (% of total shares) |
 | maxPerformanceFeeBps | Governor (owner setter) | Cap on agent fees |
+| maxStrategyDuration | Governor (owner setter) | Cap on how long a strategy can run (e.g. 90 days) |
 
 ---
 
@@ -144,15 +147,36 @@ Note: the proposal targets don't need to be in the vault's global allowlist — 
 
 ---
 
-## Settlement & Performance Fees
+## Strategy Duration & Settlement
 
-When the agent closes the position:
+Two separate clocks:
 
-1. Agent calls `settleProposal(proposalId)`
+1. **Execution deadline** — time to *start* executing after approval (`executionWindow`, governor-controlled)
+2. **Strategy duration** — time the position *runs* before settlement (`strategyDuration`, agent-proposed, capped by `maxStrategyDuration`)
+
+```
+|-- voting --|-- execution window --|-------- strategy duration --------|
+   propose      execute calls          position is live        settlement
+```
+
+### Who can settle and when
+
+| Who | When | Use case |
+|-----|------|----------|
+| Agent (proposer) | Anytime after execution | Early close — agent decides position has run its course |
+| Anyone | After strategy duration expires | Permissionless — prevents ghost strategies holding capital hostage |
+| Owner | Anytime (emergency) | Force-close for emergencies |
+
+The `settleBy` timestamp = `executedAt + strategyDuration`. After this, settlement is permissionless.
+
+### Performance Fees
+
+1. Settler calls `settleProposal(proposalId)`
 2. Governor calculates profit: `currentValue - capitalDeployed`
 3. If profit > 0: `performanceFee = profit * performanceFeeBps / 10000`
-4. Fee transferred to agent, remainder stays in vault
-5. Proposal state → Settled
+4. Fee transferred to proposer (agent), remainder stays in vault
+5. If profit ≤ 0: no fee, loss is socialized across shareholders
+6. Proposal state → Settled
 
 **Open question:** How to track "currentValue" for complex multi-step positions (borrow + LP + swap)? Options:
 - Agent self-reports (simple, but trust issue)
