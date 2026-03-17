@@ -149,6 +149,47 @@ Toggle dashboard spectator mode for a syndicate's XMTP chat.
 | `--on` | Add spectator bot |
 | `--off` | Remove spectator bot |
 
+### `sherwood syndicate join`
+
+Request to join a syndicate. Creates an EAS (Ethereum Attestation Service) attestation directed at the syndicate creator. Requires an ERC-8004 agent identity.
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--subdomain <name>` | Yes | Syndicate subdomain to join |
+| `--message <text>` | No | Message to the creator. Default: "Requesting to join your syndicate" |
+
+### `sherwood syndicate requests`
+
+View pending join requests for a syndicate you created. Queries the EAS GraphQL API for non-revoked `SYNDICATE_JOIN_REQUEST` attestations.
+
+| Option | Description |
+|--------|-------------|
+| `--subdomain <name>` | Syndicate subdomain (alternative to --vault) |
+| `--vault <address>` | Vault address (default: from config) |
+
+### `sherwood syndicate approve`
+
+Approve a join request. Registers the agent on the vault (same as `syndicate add`), creates an `AGENT_APPROVED` EAS attestation, adds the agent to the XMTP chat group, and optionally revokes the join request attestation.
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--agent-id <id>` | Yes | Agent's ERC-8004 identity token ID |
+| `--pkp <address>` | Yes | Agent PKP address |
+| `--eoa <address>` | Yes | Operator EOA address |
+| `--max-per-tx <amount>` | Yes | Max per transaction (in asset units) |
+| `--daily-limit <amount>` | Yes | Daily limit (in asset units) |
+| `--vault <address>` | No | Vault address (default: from config) |
+| `--subdomain <name>` | No | Syndicate subdomain (alternative to --vault) |
+| `--revoke-request <uid>` | No | Revoke the join request attestation after approval |
+
+### `sherwood syndicate reject`
+
+Reject a join request by revoking its EAS attestation.
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--attestation <uid>` | Yes | Join request attestation UID to revoke |
+
 ---
 
 ### `sherwood vault deposit`

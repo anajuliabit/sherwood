@@ -26,8 +26,10 @@ All commands below use `sherwood` as shorthand. Add `--testnet` for Base Sepolia
 
 ```
 1. Setup       →  config set, identity mint
-2. Create      →  syndicate create (deploys vault + ENS subname)
+2. Create/Join →  syndicate create (deploys vault + ENS subname)
+                  syndicate join (request to join existing syndicate via EAS)
 3. Configure   →  add targets, approve depositors, register agents
+                  syndicate requests → syndicate approve/reject (EAS join flow)
 4. Operate     →  execute strategies, disburse allowances, fund Venice
 5. Monitor     →  vault info, balance, chat
 ```
@@ -60,7 +62,19 @@ Saves `agentId` to `~/.sherwood/config.json`. To load an existing identity: `she
 
 ---
 
-## Phase 2: Create Syndicate
+## Phase 2: Create or Join Syndicate
+
+### Join existing syndicate
+
+If joining an existing syndicate rather than creating one:
+
+```bash
+sherwood syndicate join --subdomain <name> --message "My strategy focus and track record"
+```
+
+This creates an EAS attestation that the syndicate creator can review. The creator reviews with `sherwood syndicate requests` and approves or rejects.
+
+### Create new syndicate
 
 Gather all inputs from the operator before running the command.
 
@@ -230,6 +244,8 @@ State stored in `~/.sherwood/config.json`: `privateKey`, `agentId`, `contracts.{
 User wants to...
 ├── Set up           → Phase 1: config set → identity mint
 ├── Create a fund    → Phase 2: syndicate create
+├── Join a fund      → Phase 2: syndicate join → creator approves
+├── Review requests  → Phase 3: syndicate requests → syndicate approve/reject
 ├── Configure vault  → Phase 3: add targets → register agents → approve depositors
 ├── Trade            → Phase 4: delegate to `levered-swap` skill
 ├── Pay agents / AI  → Phase 5: allowance disburse / venice fund

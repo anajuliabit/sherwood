@@ -25,6 +25,17 @@ These are also available in `cli/src/lib/addresses.ts` (resolved at runtime base
 | USDC (test) | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 | WETH | `0x4200000000000000000000000000000000000006` |
 
+## EAS (Ethereum Attestation Service)
+
+Base predeploys (same on mainnet and Sepolia):
+
+| Contract | Address |
+|----------|---------|
+| EAS | `0x4200000000000000000000000000000000000021` |
+| SchemaRegistry | `0x4200000000000000000000000000000000000020` |
+
+Schema UIDs are stored in `cli/src/lib/addresses.ts` and differ per network. Register via `cli/scripts/register-eas-schemas.ts`.
+
 ## Allowlist Targets by Strategy
 
 ### Levered Swap (Moonwell + Uniswap)
