@@ -14,6 +14,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag_exists: ${{ steps.check_tag.outputs.exists }}
+      npm_published: ${{ steps.check_npm.outputs.published }}
     steps:
       - uses: actions/checkout@v4
 
@@ -30,6 +31,18 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Check if version already published to npm
+        id: check_npm
+        run: |
+          PKG_VERSION=$(jq -r .version cli/package.json)
+          NPM_VERSION=$(npm view @sherwoodagent/cli version 2>/dev/null || echo "")
+          if [ "$PKG_VERSION" = "$NPM_VERSION" ]; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Version $PKG_VERSION already published to npm — skipping"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create GitHub release
         if: steps.check_tag.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
@@ -41,7 +54,7 @@ jobs:
   # Primary distribution — npm handles native bindings (XMTP) correctly
   publish-npm:
     needs: release
-    if: needs.release.outputs.tag_exists == 'false'
+    if: needs.release.outputs.tag_exists == 'false' && needs.release.outputs.npm_published == 'false'
     runs-on: ubuntu-latest
     defaults:
       run:
