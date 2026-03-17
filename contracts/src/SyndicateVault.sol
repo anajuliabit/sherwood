@@ -140,45 +140,9 @@ contract SyndicateVault is
     // ==================== BATCH EXECUTION ====================
 
     /// @inheritdoc ISyndicateVault
-    function executeBatch(BatchExecutorLib.Call[] calldata calls, uint256 assetAmount) external whenNotPaused {
-        AgentConfig storage agent = _agents[msg.sender];
-        if (!agent.active) revert NotActiveAgent();
-
-        // --- Layer 1: Syndicate caps ---
-
-        // Per-tx cap (use the tighter of syndicate vs agent limit)
-        uint256 effectiveMaxPerTx = agent.maxPerTx < _syndicateCaps.maxPerTx ? agent.maxPerTx : _syndicateCaps.maxPerTx;
-        if (assetAmount > effectiveMaxPerTx) revert ExceedsPerTxCap();
-
-        // Daily limit — reset if new day
-        uint256 today = block.timestamp / 1 days;
-        if (today > agent.lastResetDay) {
-            agent.spentToday = 0;
-            agent.lastResetDay = today;
-        }
-        if (today > _dailySpendResetDay) {
-            _dailySpendTotal = 0;
-            _dailySpendResetDay = today;
-        }
-
-        // Agent daily limit
-        uint256 effectiveDailyLimit =
-            agent.dailyLimit < _syndicateCaps.maxDailyTotal ? agent.dailyLimit : _syndicateCaps.maxDailyTotal;
-        if (agent.spentToday + assetAmount > effectiveDailyLimit) revert ExceedsAgentDailyLimit();
-
-        // Syndicate combined daily limit
-        if (_dailySpendTotal + assetAmount > _syndicateCaps.maxDailyTotal) revert ExceedsSyndicateDailyLimit();
-
-        // Update spend tracking
-        agent.spentToday += assetAmount;
-        _dailySpendTotal += assetAmount;
-
-        // --- Allowlist check ---
-        for (uint256 i = 0; i < calls.length; i++) {
-            if (!_allowedTargets.contains(calls[i].target)) revert TargetNotAllowed(calls[i].target);
-        }
-
-        // --- Delegatecall to shared executor lib ---
+    /// @dev Owner-only for manual vault management (e.g. recovering stuck tokens).
+    ///      Strategy execution goes through the governor via executeGovernorBatch.
+    function executeBatch(BatchExecutorLib.Call[] calldata calls) external onlyOwner whenNotPaused {
         (bool success, bytes memory returnData) =
             _executorImpl.delegatecall(abi.encodeCall(BatchExecutorLib.executeBatch, (calls)));
         if (!success) {
@@ -187,7 +151,7 @@ contract SyndicateVault is
             }
         }
 
-        emit BatchExecuted(msg.sender, calls.length, assetAmount);
+        emit BatchExecuted(msg.sender, calls.length);
     }
 
     /// @inheritdoc ISyndicateVault
@@ -195,15 +159,6 @@ contract SyndicateVault is
         external
         returns (BatchExecutorLib.CallResult[] memory)
     {
-        // Allowlist check (return error result instead of reverting)
-        for (uint256 i = 0; i < calls.length; i++) {
-            if (!_allowedTargets.contains(calls[i].target)) {
-                BatchExecutorLib.CallResult[] memory results = new BatchExecutorLib.CallResult[](calls.length);
-                results[i] = BatchExecutorLib.CallResult({success: false, returnData: bytes("Target not allowed")});
-                return results;
-            }
-        }
-
         (bool success, bytes memory returnData) =
             _executorImpl.delegatecall(abi.encodeCall(BatchExecutorLib.simulateBatch, (calls)));
         if (!success) revert SimulationFailed();

@@ -73,8 +73,8 @@ interface ISyndicateVault {
     // ── LP Functions ──
     function ragequit(address receiver) external returns (uint256 assets);
 
-    // ── Agent Functions (called by Lit PKP) ──
-    function executeBatch(BatchExecutorLib.Call[] calldata calls, uint256 assetAmount) external;
+    // ── Owner Functions ──
+    function executeBatch(BatchExecutorLib.Call[] calldata calls) external;
 
     // ── Simulation (callable by anyone via eth_call) ──
     function simulateBatch(BatchExecutorLib.Call[] calldata calls)
@@ -140,7 +140,7 @@ interface ISyndicateVault {
         uint256 dailyLimit
     );
     event AgentRemoved(address indexed pkpAddress);
-    event BatchExecuted(address indexed agent, uint256 callCount, uint256 assetAmount);
+    event BatchExecuted(address indexed caller, uint256 callCount);
     event Ragequit(address indexed lp, uint256 shares, uint256 assets);
     event SyndicateCapsUpdated(uint256 maxPerTx, uint256 maxDailyTotal, uint256 maxBorrowRatio);
     event TargetAdded(address indexed target);
