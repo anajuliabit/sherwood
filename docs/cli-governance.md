@@ -5,7 +5,7 @@ Design for `sherwood proposal` and `sherwood governor` command groups. These com
 ## Prerequisites
 
 - `SYNDICATE_GOVERNOR_ABI` in `cli/src/lib/abis.ts` (done)
-- `GOVERNOR` address in `cli/src/lib/addresses.ts` (done, pending redeploy)
+- `GOVERNOR` address in `cli/src/lib/addresses.ts` (done)
 - `cli/src/lib/governor.ts` — new helper module (to be created)
 
 ## Command: `sherwood proposal create`
@@ -15,11 +15,13 @@ Agent submits a strategy proposal with pre-committed execute + settle calls.
 ```
 sherwood proposal create \
   --vault <addr> \
-  --metadata-uri <ipfs://...> \
+  --name "Moonwell USDC Yield" \
+  --description "Supply USDC to Moonwell for 7 days" \
   --performance-fee <bps> \
   --duration <seconds|7d|24h> \
   --calls <path-to-json> \
   --split-index <n> \
+  [--metadata-uri <ipfs://...>] \
   [--testnet]
 ```
 
@@ -27,11 +29,21 @@ sherwood proposal create \
 | Flag | Required | Description |
 |------|----------|-------------|
 | `--vault` | yes | Vault address the proposal targets |
-| `--metadata-uri` | yes | IPFS URI with strategy rationale (name, description, risk) |
+| `--name` | yes* | Strategy name (used in metadata JSON, skipped if `--metadata-uri` provided) |
+| `--description` | yes* | Strategy rationale and risk summary (skipped if `--metadata-uri` provided) |
 | `--performance-fee` | yes | Agent's fee in bps (e.g. 1500 = 15%, capped by governor) |
 | `--duration` | yes | Strategy duration. Accepts seconds or human format (`7d`, `24h`, `1h`) |
 | `--calls` | yes | Path to JSON file with Call[] array (target, data, value) |
 | `--split-index` | yes | Index where execute calls end and settle calls begin |
+| `--metadata-uri` | no | Override — skip IPFS upload and use this URI directly |
+
+**Metadata pinning (IPFS via Pinata):**
+
+When `--metadata-uri` is not provided, the CLI builds a metadata JSON from `--name` and `--description`, pins it to IPFS via the Pinata API, and uses the resulting `ipfs://` URI. This follows the same pattern as `syndicate create`.
+
+- **Pin:** `POST https://api.pinata.cloud/pinning/pinJSONToIPFS` with `PINATA_API_KEY` from env
+- **Resolve:** Metadata displayed in the dashboard via `PINATA_GATEWAY` (default: `sherwood.mypinata.cloud`)
+- **Schema:** `{ name, description, proposer, vault, performanceFeeBps, strategyDuration, createdAt }`
 
 **Call JSON format:**
 ```json
@@ -46,9 +58,10 @@ Calls before `splitIndex` run at execution time (open positions). Calls from `sp
 **Flow:**
 1. Validate caller is a registered agent on the vault
 2. Parse and validate calls JSON
-3. Display proposal summary for review
-4. Call `governor.propose(vault, metadataURI, performanceFeeBps, strategyDuration, calls, splitIndex)`
-5. Print proposalId and voting period end time
+3. If no `--metadata-uri`: build metadata JSON, pin to IPFS via Pinata, get `ipfs://Qm...` URI
+4. Display proposal summary for review (name, fee, duration, call count, metadata URI)
+5. Call `governor.propose(vault, metadataURI, performanceFeeBps, strategyDuration, calls, splitIndex)`
+6. Print proposalId and voting period end time
 
 ## Command: `sherwood proposal list`
 
@@ -211,10 +224,11 @@ export function parseDuration(input: string): bigint;
 ## UX Considerations
 
 - **Duration format:** Accept human-readable durations (`7d`, `24h`, `1h`) in addition to raw seconds
-- **Call encoding:** For common protocols (Moonwell supply/borrow, Uniswap swap), provide built-in call builders so agents don't need to manually encode calldata
-- **Proposal metadata:** Consider a `sherwood proposal draft` command that helps agents create and pin metadata to IPFS before submitting on-chain
+- **Call encoding:** For common protocols (Moonwell supply/borrow, Uniswap swap), provide built-in call builders so agents don't need to manually encode calldata. Reuse existing helpers from `cli/src/commands/strategy-run.ts` and `cli/src/lib/batch.ts`
+- **Metadata via Pinata:** `proposal create` pins metadata to IPFS using `PINATA_API_KEY` (same env var used by `syndicate create`). Dashboard resolves metadata via `PINATA_GATEWAY` (`sherwood.mypinata.cloud`). If the agent provides `--metadata-uri` directly, skip pinning
 - **Vote weight display:** Show the user's voting power before they vote, so they understand their influence
 - **Settlement routing:** Auto-detect the correct settlement path based on caller identity and timing
+- **`proposal show` metadata resolution:** Fetch the IPFS metadata via Pinata gateway and display name/description inline, same as syndicate metadata resolution in `syndicate-data.ts`
 
 ## Files to Create/Modify
 
