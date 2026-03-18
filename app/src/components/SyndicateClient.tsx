@@ -1,12 +1,16 @@
 "use client";
 
 import { useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useAccount, useReadContract } from "wagmi";
 import { formatUnits, type Address } from "viem";
-import { ConnectWallet, Wallet } from "@coinbase/onchainkit/wallet";
 import SyndicateHeader from "./SyndicateHeader";
 import DepositModal from "./DepositModal";
 import { SYNDICATE_VAULT_ABI, formatUSDC } from "@/lib/contracts";
+
+// Lazy-load heavy OnchainKit wallet UI — splits ~350 kB into a separate async chunk
+const Wallet = dynamic(() => import("@coinbase/onchainkit/wallet").then((m) => ({ default: m.Wallet })), { ssr: false });
+const ConnectWallet = dynamic(() => import("@coinbase/onchainkit/wallet").then((m) => ({ default: m.ConnectWallet })), { ssr: false });
 
 interface SyndicateClientProps {
   name: string;
