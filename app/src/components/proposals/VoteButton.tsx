@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { type Address } from "viem";
 import { SYNDICATE_GOVERNOR_ABI, formatShares } from "@/lib/contracts";
@@ -16,8 +17,21 @@ export default function VoteButton({
   voteEnd,
 }: VoteButtonProps) {
   const { address, isConnected } = useAccount();
-  const now = BigInt(Math.floor(Date.now() / 1000));
-  const votingEnded = voteEnd <= now;
+  const [votingEnded, setVotingEnded] = useState(
+    () => voteEnd <= BigInt(Math.floor(Date.now() / 1000)),
+  );
+
+  // Re-check deadline every 15s so the UI updates after voting ends
+  useEffect(() => {
+    if (votingEnded) return;
+    const id = setInterval(() => {
+      if (voteEnd <= BigInt(Math.floor(Date.now() / 1000))) {
+        setVotingEnded(true);
+        clearInterval(id);
+      }
+    }, 15_000);
+    return () => clearInterval(id);
+  }, [voteEnd, votingEnded]);
 
   const { data: hasVoted } = useReadContract({
     address: governorAddress,
@@ -41,6 +55,11 @@ export default function VoteButton({
   const busy = isPending || isConfirming;
 
   function castVote(support: boolean) {
+    // Re-check at click time to prevent submitting after deadline
+    if (voteEnd <= BigInt(Math.floor(Date.now() / 1000))) {
+      setVotingEnded(true);
+      return;
+    }
     writeContract({
       address: governorAddress,
       abi: SYNDICATE_GOVERNOR_ABI,

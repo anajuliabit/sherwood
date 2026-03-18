@@ -19,6 +19,7 @@ import {
   setMaxStrategyDuration,
   setCooldownPeriod,
 } from "../lib/governor.js";
+import { formatDurationLong as formatDuration, parseBigIntArg } from "../lib/format.js";
 
 const G = chalk.green;
 const W = chalk.white;
@@ -26,14 +27,6 @@ const DIM = chalk.gray;
 const BOLD = chalk.white.bold;
 const LABEL = chalk.green.bold;
 const SEP = () => console.log(DIM("─".repeat(60)));
-
-function formatDuration(seconds: bigint): string {
-  const s = Number(seconds);
-  if (s >= 86400) return `${(s / 86400).toFixed(s % 86400 === 0 ? 0 : 1)} day${s >= 172800 ? "s" : ""}`;
-  if (s >= 3600) return `${(s / 3600).toFixed(s % 3600 === 0 ? 0 : 1)} hour${s >= 7200 ? "s" : ""}`;
-  if (s >= 60) return `${(s / 60).toFixed(0)} min`;
-  return `${s}s`;
-}
 
 export function registerGovernorCommands(program: Command): void {
   const governor = program.command("governor").description("Governor parameters and vault management");
@@ -92,7 +85,7 @@ export function registerGovernorCommands(program: Command): void {
     .action(async (opts) => {
       const spinner = ora("Setting voting period...").start();
       try {
-        const hash = await setVotingPeriod(BigInt(opts.seconds));
+        const hash = await setVotingPeriod(parseBigIntArg(opts.seconds, "seconds"));
         spinner.succeed(G(`Voting period updated to ${opts.seconds}s`));
         console.log(DIM(`  ${getExplorerUrl(hash)}`));
       } catch (err) {
@@ -111,7 +104,7 @@ export function registerGovernorCommands(program: Command): void {
     .action(async (opts) => {
       const spinner = ora("Setting execution window...").start();
       try {
-        const hash = await setExecutionWindow(BigInt(opts.seconds));
+        const hash = await setExecutionWindow(parseBigIntArg(opts.seconds, "seconds"));
         spinner.succeed(G(`Execution window updated to ${opts.seconds}s`));
         console.log(DIM(`  ${getExplorerUrl(hash)}`));
       } catch (err) {
@@ -130,7 +123,7 @@ export function registerGovernorCommands(program: Command): void {
     .action(async (opts) => {
       const spinner = ora("Setting quorum...").start();
       try {
-        const hash = await setQuorumBps(BigInt(opts.bps));
+        const hash = await setQuorumBps(parseBigIntArg(opts.bps, "bps"));
         spinner.succeed(G(`Quorum updated to ${Number(opts.bps) / 100}%`));
         console.log(DIM(`  ${getExplorerUrl(hash)}`));
       } catch (err) {
@@ -149,7 +142,7 @@ export function registerGovernorCommands(program: Command): void {
     .action(async (opts) => {
       const spinner = ora("Setting max fee...").start();
       try {
-        const hash = await setMaxPerformanceFeeBps(BigInt(opts.bps));
+        const hash = await setMaxPerformanceFeeBps(parseBigIntArg(opts.bps, "bps"));
         spinner.succeed(G(`Max performance fee updated to ${Number(opts.bps) / 100}%`));
         console.log(DIM(`  ${getExplorerUrl(hash)}`));
       } catch (err) {
@@ -168,7 +161,7 @@ export function registerGovernorCommands(program: Command): void {
     .action(async (opts) => {
       const spinner = ora("Setting max duration...").start();
       try {
-        const hash = await setMaxStrategyDuration(BigInt(opts.seconds));
+        const hash = await setMaxStrategyDuration(parseBigIntArg(opts.seconds, "seconds"));
         spinner.succeed(G(`Max strategy duration updated to ${opts.seconds}s`));
         console.log(DIM(`  ${getExplorerUrl(hash)}`));
       } catch (err) {
@@ -187,7 +180,7 @@ export function registerGovernorCommands(program: Command): void {
     .action(async (opts) => {
       const spinner = ora("Setting cooldown...").start();
       try {
-        const hash = await setCooldownPeriod(BigInt(opts.seconds));
+        const hash = await setCooldownPeriod(parseBigIntArg(opts.seconds, "seconds"));
         spinner.succeed(G(`Cooldown period updated to ${opts.seconds}s`));
         console.log(DIM(`  ${getExplorerUrl(hash)}`));
       } catch (err) {

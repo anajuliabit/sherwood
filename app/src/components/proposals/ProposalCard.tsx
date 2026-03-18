@@ -112,12 +112,8 @@ export default function ProposalCard({
               className="vote-progress-against"
               style={{ width: `${againstPct}%` }}
             />
-            {/* Quorum marker */}
-            <div
-              className="vote-progress-quorum"
-              style={{ left: `${Number(params.quorumBps) / 100}%` }}
-              title={`Quorum: ${formatBps(params.quorumBps)}`}
-            />
+            {/* Quorum marker removed — quorumBps is % of total supply,
+                not % of votes cast. Shown as text below instead. */}
           </div>
           <div
             style={{
@@ -133,7 +129,7 @@ export default function ProposalCard({
               FOR {forPct.toFixed(1)}%
             </span>
             <span>
-              {formatShares(totalVotes)} shares voted
+              {formatShares(totalVotes)} shares voted · Quorum: {formatBps(params.quorumBps)}
             </span>
             <span style={{ color: "#ff4d4d" }}>
               {againstPct.toFixed(1)}% AGAINST

@@ -38,6 +38,7 @@ import {
   PROPOSAL_STATES,
 } from "../lib/governor.js";
 import type { BatchCall } from "../lib/governor.js";
+import { formatDurationShort as formatDuration, formatShares, parseBigIntArg } from "../lib/format.js";
 
 const G = chalk.green;
 const W = chalk.white;
@@ -45,14 +46,6 @@ const DIM = chalk.gray;
 const BOLD = chalk.white.bold;
 const LABEL = chalk.green.bold;
 const SEP = () => console.log(DIM("─".repeat(60)));
-
-function formatDuration(seconds: bigint): string {
-  const s = Number(seconds);
-  if (s >= 86400) return `${(s / 86400).toFixed(s % 86400 === 0 ? 0 : 1)}d`;
-  if (s >= 3600) return `${(s / 3600).toFixed(s % 3600 === 0 ? 0 : 1)}h`;
-  if (s >= 60) return `${(s / 60).toFixed(0)}m`;
-  return `${s}s`;
-}
 
 function formatTimestamp(ts: bigint): string {
   if (ts === 0n) return "—";
@@ -93,9 +86,9 @@ export function registerProposalCommands(program: Command): void {
           process.exit(1);
         }
 
-        const performanceFeeBps = BigInt(opts.performanceFee);
+        const performanceFeeBps = parseBigIntArg(opts.performanceFee, "performance-fee");
         const strategyDuration = parseDuration(opts.duration);
-        const splitIndex = BigInt(opts.splitIndex);
+        const splitIndex = parseBigIntArg(opts.splitIndex, "split-index");
         const calls = parseCallsFile(opts.calls);
 
         // ── Pin metadata ──
@@ -184,15 +177,20 @@ export function registerProposalCommands(program: Command): void {
         const stateFilter = opts.state.toLowerCase();
         const stateIndex = PROPOSAL_STATES.findIndex((s) => s.toLowerCase() === stateFilter);
 
-        const proposals = [];
-        for (let i = 1n; i <= count; i++) {
-          const p = await getProposal(i);
+        // Fetch all proposals + computed states concurrently
+        const ids = Array.from({ length: Number(count) }, (_, i) => BigInt(i + 1));
+        const results = await Promise.all(
+          ids.map(async (id) => {
+            const [p, state] = await Promise.all([getProposal(id), getProposalState(id)]);
+            return { ...p, computedState: state };
+          }),
+        );
 
-          if (vaultFilter && p.vault.toLowerCase() !== vaultFilter) continue;
-          if (stateFilter !== "all" && stateIndex >= 0 && p.state !== stateIndex) continue;
-
-          proposals.push(p);
-        }
+        const proposals = results.filter((p) => {
+          if (vaultFilter && p.vault.toLowerCase() !== vaultFilter) return false;
+          if (stateFilter !== "all" && stateIndex >= 0 && p.computedState !== stateIndex) return false;
+          return true;
+        });
 
         spinner.stop();
 
@@ -216,14 +214,14 @@ export function registerProposalCommands(program: Command): void {
         console.log(DIM("─".repeat(90)));
 
         for (const p of proposals) {
-          const state = PROPOSAL_STATES[p.state] || "Unknown";
+          const state = PROPOSAL_STATES[p.computedState] || "Unknown";
           const created = p.snapshotTimestamp > 0n
             ? new Date(Number(p.snapshotTimestamp) * 1000).toLocaleDateString()
             : "—";
           const agent = `${p.proposer.slice(0, 6)}...${p.proposer.slice(-4)}`;
           const fee = `${Number(p.performanceFeeBps) / 100}%`;
           const dur = formatDuration(p.strategyDuration);
-          const votes = `${p.votesFor}/${p.votesAgainst}`;
+          const votes = `${formatShares(p.votesFor)}/${formatShares(p.votesAgainst)}`;
 
           console.log(
             `  ${String(p.id).padEnd(4)}` +
@@ -296,8 +294,8 @@ export function registerProposalCommands(program: Command): void {
 
         console.log();
         console.log(LABEL("  Votes"));
-        console.log(W(`  For:              ${p.votesFor}`));
-        console.log(W(`  Against:          ${p.votesAgainst}`));
+        console.log(W(`  For:              ${formatShares(p.votesFor)}`));
+        console.log(W(`  Against:          ${formatShares(p.votesAgainst)}`));
         console.log(W(`  Quorum:           ${quorumNeeded}`));
 
         if (state === 4 /* Executed */ || state === 5 /* Settled */) {

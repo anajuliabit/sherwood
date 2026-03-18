@@ -101,6 +101,11 @@ async function fetchProposalMetadata(
 
     const res = await fetch(url, { next: { revalidate: 300 } });
     if (!res.ok) return null;
+
+    // Guard against oversized responses (1 MB limit)
+    const contentLength = res.headers.get("content-length");
+    if (contentLength && parseInt(contentLength, 10) > 1_000_000) return null;
+
     const json = (await res.json()) as Record<string, unknown>;
     const title =
       (typeof json.title === "string" && json.title) ||

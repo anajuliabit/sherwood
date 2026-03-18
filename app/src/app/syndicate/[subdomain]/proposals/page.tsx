@@ -18,12 +18,32 @@ import { formatBps } from "@/lib/contracts";
 import { formatDuration } from "@/lib/governor-data";
 import type { Address } from "viem";
 
+// ── Mock badge ──────────────────────────────────────────────────────────────
+
+function MockBadge() {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: "0.75rem",
+        right: "0.75rem",
+        zIndex: 1,
+        color: "rgba(255,255,255,0.2)",
+        fontSize: "9px",
+        fontFamily: "var(--font-jetbrains-mono), monospace",
+      }}
+    >
+      MOCK DATA
+    </div>
+  );
+}
+
 // ── Mock data (shown when governor is not yet deployed) ─────────────────────
 
-const NOW = BigInt(Math.floor(Date.now() / 1000));
 const DAY = 86400n;
 
 function buildMockData(vault: Address): GovernorData {
+  const NOW = BigInt(Math.floor(Date.now() / 1000));
   const AGENT_A = "0x3fC9…d42E" as Address;
   const AGENT_B = "0x81aF…9930" as Address;
   const AGENT_C = "0xc2b8…F314" as Address;
@@ -256,7 +276,7 @@ export default async function ProposalsPage({
   );
 
   const mockTag = isMock ? (
-    <span style={{ color: "rgba(255,255,255,0.2)", fontSize: "9px" }}>
+    <span style={{ color: "rgba(255,255,255,0.2)", fontSize: "9px", fontFamily: "var(--font-jetbrains-mono), monospace" }}>
       MOCK DATA
     </span>
   ) : null;
@@ -318,21 +338,7 @@ export default async function ProposalsPage({
 
           {/* Active Strategy */}
           <div style={{ position: "relative" }}>
-            {isMock && (
-              <div
-                style={{
-                  position: "absolute",
-                  top: "0.75rem",
-                  right: "0.75rem",
-                  zIndex: 1,
-                  color: "rgba(255,255,255,0.2)",
-                  fontSize: "9px",
-                  fontFamily: "var(--font-jetbrains-mono), monospace",
-                }}
-              >
-                MOCK DATA
-              </div>
-            )}
+            {isMock && <MockBadge />}
             <ActiveProposal
               proposal={activeProposal}
               cooldownEnd={governor.cooldownEnd}
@@ -368,39 +374,11 @@ export default async function ProposalsPage({
           {/* History + Agent Stats grid */}
           <div className="grid-dashboard" style={{ marginTop: "1.5rem" }}>
             <div style={{ position: "relative" }}>
-              {isMock && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "0.75rem",
-                    right: "0.75rem",
-                    zIndex: 1,
-                    color: "rgba(255,255,255,0.2)",
-                    fontSize: "9px",
-                    fontFamily: "var(--font-jetbrains-mono), monospace",
-                  }}
-                >
-                  MOCK DATA
-                </div>
-              )}
+              {isMock && <MockBadge />}
               <ProposalHistory proposals={governor.proposals} />
             </div>
             <div style={{ position: "relative" }}>
-              {isMock && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "0.75rem",
-                    right: "0.75rem",
-                    zIndex: 1,
-                    color: "rgba(255,255,255,0.2)",
-                    fontSize: "9px",
-                    fontFamily: "var(--font-jetbrains-mono), monospace",
-                  }}
-                >
-                  MOCK DATA
-                </div>
-              )}
+              {isMock && <MockBadge />}
               <AgentStats proposals={governor.proposals} />
             </div>
           </div>
@@ -408,7 +386,7 @@ export default async function ProposalsPage({
       </div>
 
       <SiteFooter
-        left="&copy; 2025 Sherwood Protocol // Proposals"
+        left="&copy; 2026 Sherwood Protocol // Proposals"
         right="Governance // Dashboard"
       />
     </>

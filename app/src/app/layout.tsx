@@ -29,7 +29,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
+    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <body className="bg-black text-[#d4d5d9] antialiased overflow-x-hidden font-[family-name:var(--font-inter)]" suppressHydrationWarning>
         <Providers>{children}</Providers>
       </body>
