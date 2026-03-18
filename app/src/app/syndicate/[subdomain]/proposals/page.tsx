@@ -285,7 +285,7 @@ export default async function ProposalsPage({
             vault={data.vault}
             creator={data.creator}
             paused={data.paused}
-            openDeposits={data.openDeposits}
+            activeTab="proposals"
           />
 
           {/* Governor params bar */}
