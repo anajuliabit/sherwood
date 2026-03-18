@@ -8,9 +8,208 @@ import ProposalCard from "@/components/proposals/ProposalCard";
 import ProposalHistory from "@/components/proposals/ProposalHistory";
 import AgentStats from "@/components/proposals/AgentStats";
 import { resolveSyndicateBySubdomain } from "@/lib/syndicate-data";
-import { fetchGovernorData, ProposalState } from "@/lib/governor-data";
+import {
+  fetchGovernorData,
+  ProposalState,
+  type ProposalData,
+  type GovernorData,
+} from "@/lib/governor-data";
 import { formatBps } from "@/lib/contracts";
 import { formatDuration } from "@/lib/governor-data";
+import type { Address } from "viem";
+
+// ── Mock data (shown when governor is not yet deployed) ─────────────────────
+
+const NOW = BigInt(Math.floor(Date.now() / 1000));
+const DAY = 86400n;
+
+function buildMockData(vault: Address): GovernorData {
+  const AGENT_A = "0x3fC9…d42E" as Address;
+  const AGENT_B = "0x81aF…9930" as Address;
+  const AGENT_C = "0xc2b8…F314" as Address;
+
+  const mockProposals: ProposalData[] = [
+    // ── Active (Executed) ──────────────────────────────────────────────────
+    {
+      id: 5n,
+      proposer: "0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD" as Address,
+      vault,
+      metadataURI: "ipfs://mock",
+      performanceFeeBps: 1500n,
+      splitIndex: 5n,
+      strategyDuration: 7n * DAY,
+      votesFor: 124_000_000_000n,   // 124,000 shares
+      votesAgainst: 18_000_000_000n, // 18,000 shares
+      snapshotTimestamp: NOW - 4n * DAY,
+      voteEnd: NOW - 3n * DAY,
+      executeBy: NOW - 2n * DAY,
+      executedAt: NOW - 3n * DAY,
+      state: ProposalState.Executed,
+      computedState: ProposalState.Executed,
+      capitalSnapshot: 50_000_000_000n, // 50,000 USDC
+      metadata: {
+        title: "Moonwell WETH Supply + USDC Borrow",
+        description:
+          "Supply 22 WETH as collateral on Moonwell (Base), borrow 50k USDC at ~4.2% APY, deploy into Uniswap V3 WETH/USDC concentrated LP at 0.05% tier. Expected net yield: 11–14% APY. Health factor maintained above 2.1.",
+      },
+    },
+
+    // ── Pending (voting active) ────────────────────────────────────────────
+    {
+      id: 6n,
+      proposer: "0x81aF49a68bb2197992897016F9932dc1e4a99901" as Address,
+      vault,
+      metadataURI: "ipfs://mock2",
+      performanceFeeBps: 1000n,
+      splitIndex: 4n,
+      strategyDuration: 14n * DAY,
+      votesFor: 87_000_000_000n,
+      votesAgainst: 31_000_000_000n,
+      snapshotTimestamp: NOW - DAY,
+      voteEnd: NOW + 2n * DAY,
+      executeBy: NOW + 4n * DAY,
+      executedAt: 0n,
+      state: ProposalState.Pending,
+      computedState: ProposalState.Pending,
+      capitalSnapshot: 0n,
+      metadata: {
+        title: "Aerodrome USDC/cbBTC LP Strategy",
+        description:
+          "Deploy 30k USDC into Aerodrome Finance USDC/cbBTC stable pool. Compound farming rewards weekly. Target APY: 18–22%. Duration: 14 days.",
+      },
+    },
+    {
+      id: 7n,
+      proposer: "0xc2b856ba96De21a4EB84B8D21FD749aC5AeF314" as Address,
+      vault,
+      metadataURI: "ipfs://mock3",
+      performanceFeeBps: 2000n,
+      splitIndex: 6n,
+      strategyDuration: 3n * DAY,
+      votesFor: 12_000_000_000n,
+      votesAgainst: 0n,
+      snapshotTimestamp: NOW - 6n * 3600n,
+      voteEnd: NOW + 5n * DAY,
+      executeBy: NOW + 7n * DAY,
+      executedAt: 0n,
+      state: ProposalState.Pending,
+      computedState: ProposalState.Pending,
+      capitalSnapshot: 0n,
+      metadata: {
+        title: "Short-term AAVE USDC Lending",
+        description:
+          "Supply 12k USDC to AAVE v3 on Base. Pure lending yield, no leverage. Conservative play for the cooldown window. Target: 6–8% APY.",
+      },
+    },
+
+    // ── History ────────────────────────────────────────────────────────────
+    {
+      id: 4n,
+      proposer: "0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD" as Address,
+      vault,
+      metadataURI: "",
+      performanceFeeBps: 1500n,
+      splitIndex: 5n,
+      strategyDuration: 7n * DAY,
+      votesFor: 98_000_000_000n,
+      votesAgainst: 14_000_000_000n,
+      snapshotTimestamp: NOW - 18n * DAY,
+      voteEnd: NOW - 17n * DAY,
+      executeBy: NOW - 16n * DAY,
+      executedAt: NOW - 16n * DAY,
+      state: ProposalState.Settled,
+      computedState: ProposalState.Settled,
+      capitalSnapshot: 40_000_000_000n,
+      metadata: {
+        title: "Uniswap V3 ETH/USDC LP",
+        description: "",
+      },
+    },
+    {
+      id: 3n,
+      proposer: "0x81aF49a68bb2197992897016F9932dc1e4a99901" as Address,
+      vault,
+      metadataURI: "",
+      performanceFeeBps: 1000n,
+      splitIndex: 4n,
+      strategyDuration: 5n * DAY,
+      votesFor: 44_000_000_000n,
+      votesAgainst: 71_000_000_000n,
+      snapshotTimestamp: NOW - 30n * DAY,
+      voteEnd: NOW - 29n * DAY,
+      executeBy: NOW - 28n * DAY,
+      executedAt: 0n,
+      state: ProposalState.Rejected,
+      computedState: ProposalState.Rejected,
+      capitalSnapshot: 0n,
+      metadata: {
+        title: "High-leverage WBTC Short via GMX",
+        description: "",
+      },
+    },
+    {
+      id: 2n,
+      proposer: "0xc2b856ba96De21a4EB84B8D21FD749aC5AeF314" as Address,
+      vault,
+      metadataURI: "",
+      performanceFeeBps: 2000n,
+      splitIndex: 3n,
+      strategyDuration: 10n * DAY,
+      votesFor: 105_000_000_000n,
+      votesAgainst: 22_000_000_000n,
+      snapshotTimestamp: NOW - 45n * DAY,
+      voteEnd: NOW - 44n * DAY,
+      executeBy: NOW - 43n * DAY,
+      executedAt: NOW - 43n * DAY,
+      state: ProposalState.Settled,
+      computedState: ProposalState.Settled,
+      capitalSnapshot: 25_000_000_000n,
+      metadata: {
+        title: "Morpho USDC Vault Deposit",
+        description: "",
+      },
+    },
+    {
+      id: 1n,
+      proposer: "0x81aF49a68bb2197992897016F9932dc1e4a99901" as Address,
+      vault,
+      metadataURI: "",
+      performanceFeeBps: 1500n,
+      splitIndex: 4n,
+      strategyDuration: 7n * DAY,
+      votesFor: 62_000_000_000n,
+      votesAgainst: 8_000_000_000n,
+      snapshotTimestamp: NOW - 70n * DAY,
+      voteEnd: NOW - 69n * DAY,
+      executeBy: NOW - 68n * DAY,
+      executedAt: NOW - 68n * DAY,
+      state: ProposalState.Settled,
+      computedState: ProposalState.Settled,
+      capitalSnapshot: 20_000_000_000n,
+      metadata: {
+        title: "Moonwell USDC Supply",
+        description: "",
+      },
+    },
+  ];
+
+  return {
+    governorAddress: "0x0000000000000000000000000000000000000000" as Address,
+    proposals: mockProposals,
+    activeProposalId: 5n,
+    cooldownEnd: 0n,
+    params: {
+      votingPeriod: 3n * DAY,
+      executionWindow: DAY,
+      quorumBps: 2000n,  // 20%
+      maxPerformanceFeeBps: 3000n, // 30%
+      maxStrategyDuration: 90n * DAY,
+      cooldownPeriod: DAY,
+    },
+  };
+}
+
+// ── Page ────────────────────────────────────────────────────────────────────
 
 export async function generateMetadata({
   params,
@@ -38,18 +237,26 @@ export default async function ProposalsPage({
   const name =
     data.metadata?.name || `Syndicate #${data.syndicateId.toString()}`;
 
-  const governor = await fetchGovernorData(data.vault);
+  const liveGovernor = await fetchGovernorData(data.vault);
+  const isMock = !liveGovernor;
+  const governor = liveGovernor ?? buildMockData(data.vault);
 
-  // Categorize proposals
-  const activeProposal = governor?.proposals.find(
-    (p) => p.computedState === ProposalState.Executed,
-  ) ?? null;
+  const activeProposal =
+    governor.proposals.find(
+      (p) => p.computedState === ProposalState.Executed,
+    ) ?? null;
 
-  const votingQueue = governor?.proposals.filter(
+  const votingQueue = governor.proposals.filter(
     (p) =>
       p.computedState === ProposalState.Pending ||
       p.computedState === ProposalState.Approved,
-  ) ?? [];
+  );
+
+  const mockTag = isMock ? (
+    <span style={{ color: "rgba(255,255,255,0.2)", fontSize: "9px" }}>
+      MOCK DATA
+    </span>
+  ) : null;
 
   return (
     <>
@@ -78,94 +285,122 @@ export default async function ProposalsPage({
             openDeposits={data.openDeposits}
           />
 
-          {!governor ? (
-            <div className="panel" style={{ marginTop: "2rem" }}>
-              <div className="panel-title">
-                <span>Governance</span>
-              </div>
-              <div
-                style={{
-                  textAlign: "center",
-                  padding: "3rem 0",
-                  color: "rgba(255,255,255,0.3)",
-                  fontFamily: "var(--font-jetbrains-mono), monospace",
-                  fontSize: "12px",
-                }}
-              >
-                Governor not configured for this vault
+          {/* Governor params bar */}
+          <div className="stats-bar">
+            <div className="stat-item">
+              <div className="stat-label">Voting Period</div>
+              <div className="stat-value" style={{ fontSize: "1.2rem" }}>
+                {formatDuration(governor.params.votingPeriod)}
               </div>
             </div>
-          ) : (
-            <>
-              {/* Governor params bar */}
-              <div className="stats-bar">
-                <div className="stat-item">
-                  <div className="stat-label">Voting Period</div>
-                  <div className="stat-value" style={{ fontSize: "1.2rem" }}>
-                    {formatDuration(governor.params.votingPeriod)}
-                  </div>
-                </div>
-                <div className="stat-item">
-                  <div className="stat-label">Quorum</div>
-                  <div className="stat-value" style={{ fontSize: "1.2rem" }}>
-                    {formatBps(governor.params.quorumBps)}
-                  </div>
-                </div>
-                <div className="stat-item">
-                  <div className="stat-label">Max Fee</div>
-                  <div className="stat-value" style={{ fontSize: "1.2rem" }}>
-                    {formatBps(governor.params.maxPerformanceFeeBps)}
-                  </div>
-                </div>
-                <div className="stat-item">
-                  <div className="stat-label">Cooldown</div>
-                  <div className="stat-value" style={{ fontSize: "1.2rem" }}>
-                    {formatDuration(governor.params.cooldownPeriod)}
-                  </div>
+            <div className="stat-item">
+              <div className="stat-label">Quorum</div>
+              <div className="stat-value" style={{ fontSize: "1.2rem" }}>
+                {formatBps(governor.params.quorumBps)}
+              </div>
+            </div>
+            <div className="stat-item">
+              <div className="stat-label">Max Fee</div>
+              <div className="stat-value" style={{ fontSize: "1.2rem" }}>
+                {formatBps(governor.params.maxPerformanceFeeBps)}
+              </div>
+            </div>
+            <div className="stat-item">
+              <div className="stat-label">Cooldown</div>
+              <div className="stat-value" style={{ fontSize: "1.2rem" }}>
+                {formatDuration(governor.params.cooldownPeriod)}
+              </div>
+            </div>
+          </div>
+
+          {/* Active Strategy */}
+          <div style={{ position: "relative" }}>
+            {isMock && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "0.75rem",
+                  right: "0.75rem",
+                  zIndex: 1,
+                  color: "rgba(255,255,255,0.2)",
+                  fontSize: "9px",
+                  fontFamily: "var(--font-jetbrains-mono), monospace",
+                }}
+              >
+                MOCK DATA
+              </div>
+            )}
+            <ActiveProposal
+              proposal={activeProposal}
+              cooldownEnd={governor.cooldownEnd}
+            />
+          </div>
+
+          {/* Voting Queue */}
+          {votingQueue.length > 0 && (
+            <div style={{ marginTop: "1.5rem" }}>
+              <div
+                className="panel-title"
+                style={{ marginBottom: "1rem" }}
+              >
+                <span>Voting Queue</span>
+                <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+                  {mockTag}
+                  <span style={{ color: "rgba(255,255,255,0.2)", fontSize: "9px" }}>
+                    {votingQueue.length} PENDING
+                  </span>
                 </div>
               </div>
+              {votingQueue.map((p) => (
+                <ProposalCard
+                  key={p.id.toString()}
+                  proposal={p}
+                  governorAddress={governor.governorAddress}
+                  params={governor.params}
+                />
+              ))}
+            </div>
+          )}
 
-              {/* Active Strategy */}
-              <ActiveProposal
-                proposal={activeProposal}
-                cooldownEnd={governor.cooldownEnd}
-              />
-
-              {/* Voting Queue */}
-              {votingQueue.length > 0 && (
-                <div style={{ marginTop: "1.5rem" }}>
-                  <div
-                    className="panel-title"
-                    style={{ marginBottom: "1rem" }}
-                  >
-                    <span>Voting Queue</span>
-                    <span
-                      style={{
-                        color: "rgba(255,255,255,0.2)",
-                        fontSize: "9px",
-                      }}
-                    >
-                      {votingQueue.length} PENDING
-                    </span>
-                  </div>
-                  {votingQueue.map((p) => (
-                    <ProposalCard
-                      key={p.id.toString()}
-                      proposal={p}
-                      governorAddress={governor.governorAddress}
-                      params={governor.params}
-                    />
-                  ))}
+          {/* History + Agent Stats grid */}
+          <div className="grid-dashboard" style={{ marginTop: "1.5rem" }}>
+            <div style={{ position: "relative" }}>
+              {isMock && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "0.75rem",
+                    right: "0.75rem",
+                    zIndex: 1,
+                    color: "rgba(255,255,255,0.2)",
+                    fontSize: "9px",
+                    fontFamily: "var(--font-jetbrains-mono), monospace",
+                  }}
+                >
+                  MOCK DATA
                 </div>
               )}
-
-              {/* History + Agent Stats grid */}
-              <div className="grid-dashboard" style={{ marginTop: "1.5rem" }}>
-                <ProposalHistory proposals={governor.proposals} />
-                <AgentStats proposals={governor.proposals} />
-              </div>
-            </>
-          )}
+              <ProposalHistory proposals={governor.proposals} />
+            </div>
+            <div style={{ position: "relative" }}>
+              {isMock && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "0.75rem",
+                    right: "0.75rem",
+                    zIndex: 1,
+                    color: "rgba(255,255,255,0.2)",
+                    fontSize: "9px",
+                    fontFamily: "var(--font-jetbrains-mono), monospace",
+                  }}
+                >
+                  MOCK DATA
+                </div>
+              )}
+              <AgentStats proposals={governor.proposals} />
+            </div>
+          </div>
         </main>
       </div>
 
