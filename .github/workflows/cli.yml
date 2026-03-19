@@ -58,6 +58,7 @@ jobs:
       run:
         working-directory: cli
     env:
+      ENABLE_TESTNET: "true"
       BASE_SEPOLIA_RPC_URL: ${{ secrets.BASE_SEPOLIA_RPC_URL }}
       VAULT_ADDRESS_TESTNET: ${{ secrets.VAULT_ADDRESS_TESTNET }}
       FACTORY_ADDRESS_TESTNET: ${{ secrets.FACTORY_ADDRESS_TESTNET }}
