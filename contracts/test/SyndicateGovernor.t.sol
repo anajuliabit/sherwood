@@ -150,9 +150,9 @@ contract SyndicateGovernorTest is Test {
 
         // Both LPs vote FOR
         vm.prank(lp1);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
         vm.prank(lp2);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
 
         // Warp past voting period
         vm.warp(block.timestamp + VOTING_PERIOD + 1);
@@ -288,10 +288,10 @@ contract SyndicateGovernorTest is Test {
         (uint256 proposalId,) = _createSimpleProposal(1500, 7 days);
 
         vm.prank(lp1);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
 
         vm.prank(lp2);
-        governor.vote(proposalId, false);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.Against);
 
         assertTrue(governor.hasVoted(proposalId, lp1));
         assertTrue(governor.hasVoted(proposalId, lp2));
@@ -306,11 +306,11 @@ contract SyndicateGovernorTest is Test {
         (uint256 proposalId,) = _createSimpleProposal(1500, 7 days);
 
         vm.prank(lp1);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
 
         vm.prank(lp1);
         vm.expectRevert(ISyndicateGovernor.AlreadyVoted.selector);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
     }
 
     function test_vote_noShares_reverts() public {
@@ -318,7 +318,7 @@ contract SyndicateGovernorTest is Test {
 
         vm.prank(random);
         vm.expectRevert(ISyndicateGovernor.NoVotingPower.selector);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
     }
 
     function test_vote_afterVotingPeriod_reverts() public {
@@ -328,7 +328,7 @@ contract SyndicateGovernorTest is Test {
 
         vm.prank(lp1);
         vm.expectRevert(ISyndicateGovernor.NotWithinVotingPeriod.selector);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
     }
 
     function test_vote_snapshotPreventsTransferVoting() public {
@@ -336,7 +336,7 @@ contract SyndicateGovernorTest is Test {
 
         // LP1 votes first
         vm.prank(lp1);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
 
         uint256 lp1Weight = governor.getVoteWeight(proposalId, lp1);
         assertEq(lp1Weight, vault.balanceOf(lp1));
@@ -349,12 +349,12 @@ contract SyndicateGovernorTest is Test {
         // LP1 can't vote again even though they transferred
         vm.prank(lp1);
         vm.expectRevert(ISyndicateGovernor.AlreadyVoted.selector);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
 
         // Random cannot vote because they had no balance at snapshot block
         vm.prank(random);
         vm.expectRevert(ISyndicateGovernor.NoVotingPower.selector);
-        governor.vote(proposalId, false);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.Against);
 
         ISyndicateGovernor.StrategyProposal memory p = governor.getProposal(proposalId);
         assertEq(p.votesFor, lp1Weight); // LP1's original balance
@@ -381,9 +381,9 @@ contract SyndicateGovernorTest is Test {
         (uint256 proposalId,) = _createSimpleProposal(1500, 7 days);
 
         vm.prank(lp1);
-        governor.vote(proposalId, false); // 60k against
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.Against); // 60k against
         vm.prank(lp2);
-        governor.vote(proposalId, true); // 40k for
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For); // 40k for
 
         vm.warp(block.timestamp + VOTING_PERIOD + 1);
         assertEq(uint256(governor.getProposalState(proposalId)), uint256(ISyndicateGovernor.ProposalState.Rejected));
@@ -426,9 +426,9 @@ contract SyndicateGovernorTest is Test {
         // Create proposal and vote it through
         (uint256 proposalId,) = _createSimpleProposal(1500, 7 days);
         vm.prank(lp1);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
         vm.prank(lp2);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
 
         // Warp past voting period
         vm.warp(block.timestamp + VOTING_PERIOD + 1);
@@ -467,9 +467,9 @@ contract SyndicateGovernorTest is Test {
         // Create second proposal and vote immediately
         (uint256 proposalId2,) = _createSimpleProposal(1500, 7 days);
         vm.prank(lp1);
-        governor.vote(proposalId2, true);
+        governor.vote(proposalId2, ISyndicateGovernor.VoteType.For);
         vm.prank(lp2);
-        governor.vote(proposalId2, true);
+        governor.vote(proposalId2, ISyndicateGovernor.VoteType.For);
 
         // Warp past voting period (1 day) — but cooldown is 3 days from settlement
         vm.warp(block.timestamp + VOTING_PERIOD + 1);
@@ -922,11 +922,11 @@ contract SyndicateGovernorTest is Test {
         assertGt(vault.balanceOf(random), 0);
         vm.prank(random);
         vm.expectRevert(ISyndicateGovernor.NoVotingPower.selector);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
 
         // Original LPs can still vote normally
         vm.prank(lp1);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
 
         uint256 lp1Weight = governor.getVoteWeight(proposalId, lp1);
         assertEq(lp1Weight, 60_000e6);
@@ -1068,20 +1068,20 @@ contract SyndicateGovernorTest is Test {
 
         // Vault1 LPs vote on pid1 only
         vm.prank(lp1);
-        governor.vote(pid1, true);
+        governor.vote(pid1, ISyndicateGovernor.VoteType.For);
         vm.prank(lp2);
-        governor.vote(pid1, true);
+        governor.vote(pid1, ISyndicateGovernor.VoteType.For);
 
         // Vault2 LPs vote on pid2 only
         vm.prank(lp3);
-        governor.vote(pid2, true);
+        governor.vote(pid2, ISyndicateGovernor.VoteType.For);
         vm.prank(lp4);
-        governor.vote(pid2, true);
+        governor.vote(pid2, ISyndicateGovernor.VoteType.For);
 
         // Vault1 LP cannot vote on vault2 proposal (no shares at snapshot)
         vm.prank(lp1);
         vm.expectRevert(ISyndicateGovernor.NoVotingPower.selector);
-        governor.vote(pid2, true);
+        governor.vote(pid2, ISyndicateGovernor.VoteType.For);
 
         // Warp past voting
         vm.warp(block.timestamp + VOTING_PERIOD + 1);

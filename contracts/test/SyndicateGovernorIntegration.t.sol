@@ -148,9 +148,9 @@ contract SyndicateGovernorIntegrationTest is Test {
         vm.warp(block.timestamp + 1);
 
         vm.prank(lp1);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
         vm.prank(lp2);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
 
         vm.warp(block.timestamp + VOTING_PERIOD + 1);
     }
@@ -176,9 +176,9 @@ contract SyndicateGovernorIntegrationTest is Test {
 
         // 2. Shareholders vote
         vm.prank(lp1);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
         vm.prank(lp2);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
 
         // 3. Voting ends → Approved
         vm.warp(block.timestamp + VOTING_PERIOD + 1);
@@ -242,9 +242,9 @@ contract SyndicateGovernorIntegrationTest is Test {
 
         // Majority votes against
         vm.prank(lp1);
-        governor.vote(proposalId, false);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.Against);
         vm.prank(lp2);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
 
         vm.warp(block.timestamp + VOTING_PERIOD + 1);
 

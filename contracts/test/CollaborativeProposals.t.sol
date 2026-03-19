@@ -170,9 +170,9 @@ contract CollaborativeProposalsTest is Test {
         proposalId = _createApprovedCollabProposal();
 
         vm.prank(lp1);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
         vm.prank(lp2);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
 
         vm.warp(block.timestamp + VOTING_PERIOD + 1);
     }
@@ -205,9 +205,9 @@ contract CollaborativeProposalsTest is Test {
         vm.warp(block.timestamp + 1);
 
         vm.prank(lp1);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
         vm.prank(lp2);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
 
         vm.warp(block.timestamp + VOTING_PERIOD + 1);
         governor.executeProposal(proposalId);
@@ -345,7 +345,10 @@ contract CollaborativeProposalsTest is Test {
         // Warp past collaboration window (default 48h)
         vm.warp(block.timestamp + 48 hours + 1);
 
-        // Anyone can expire
+        // State auto-resolves to Expired
+        assertEq(uint256(governor.getProposalState(proposalId)), uint256(ISyndicateGovernor.ProposalState.Expired));
+
+        // expireCollaboration is a no-op (already expired by _resolveState)
         vm.prank(random);
         governor.expireCollaboration(proposalId);
 
@@ -457,9 +460,9 @@ contract CollaborativeProposalsTest is Test {
 
         // Vote
         vm.prank(lp1);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
         vm.prank(lp2);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
         vm.warp(block.timestamp + VOTING_PERIOD + 1);
 
         // Execute
@@ -631,7 +634,7 @@ contract CollaborativeProposalsTest is Test {
         vm.warp(block.timestamp + 48 hours + 1);
 
         vm.prank(coAgent1);
-        vm.expectRevert(ISyndicateGovernor.CollaborationExpired.selector);
+        vm.expectRevert(ISyndicateGovernor.NotDraftState.selector);
         governor.approveCollaboration(proposalId);
     }
 
@@ -690,7 +693,7 @@ contract CollaborativeProposalsTest is Test {
 
         vm.prank(lp1);
         vm.expectRevert(ISyndicateGovernor.NotWithinVotingPeriod.selector);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
     }
 
     // ==================== COLLABORATION WINDOW SETTER ====================
@@ -703,15 +706,10 @@ contract CollaborativeProposalsTest is Test {
         uint256 tsBefore = block.timestamp;
         uint256 proposalId = _createCollabProposal();
 
-        // Warp past 24h but before 48h
+        // Warp past 24h but before 48h — auto-resolves to Expired
         vm.warp(tsBefore + 24 hours + 1);
 
-        // Should be expirable with the new 24h window
-        vm.prank(random);
-        governor.expireCollaboration(proposalId);
-
-        ISyndicateGovernor.StrategyProposal memory p = governor.getProposal(proposalId);
-        assertEq(uint256(p.state), uint256(ISyndicateGovernor.ProposalState.Expired));
+        assertEq(uint256(governor.getProposalState(proposalId)), uint256(ISyndicateGovernor.ProposalState.Expired));
     }
 
     function test_setCollaborationWindow_notOwner_reverts() public {
@@ -823,9 +821,9 @@ contract CollaborativeProposalsTest is Test {
 
         // Vote + execute
         vm.prank(lp1);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
         vm.prank(lp2);
-        governor.vote(proposalId, true);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.For);
         vm.warp(block.timestamp + VOTING_PERIOD + 1);
         governor.executeProposal(proposalId);
 

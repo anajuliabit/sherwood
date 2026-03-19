@@ -176,6 +176,7 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
             strategyDuration: strategyDuration,
             votesFor: 0,
             votesAgainst: 0,
+            votesAbstain: 0,
             snapshotTimestamp: isCollaborative ? 0 : block.timestamp,
             voteEnd: isCollaborative ? 0 : block.timestamp + _params.votingPeriod,
             executeBy: isCollaborative ? 0 : block.timestamp + _params.votingPeriod + _params.executionWindow,
@@ -195,11 +196,11 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
     }
 
     /// @inheritdoc ISyndicateGovernor
-    function vote(uint256 proposalId, bool support) external {
+    function vote(uint256 proposalId, VoteType support) external {
         StrategyProposal storage proposal = _proposals[proposalId];
         if (proposal.id == 0) revert ProposalNotApproved(); // proposal doesn't exist
+        if (_resolveState(proposal) != ProposalState.Pending) revert NotWithinVotingPeriod();
         if (block.timestamp > proposal.voteEnd) revert NotWithinVotingPeriod();
-        if (proposal.state != ProposalState.Pending) revert NotWithinVotingPeriod();
         if (_hasVoted[proposalId][msg.sender]) revert AlreadyVoted();
 
         // Get vote weight from ERC20Votes checkpoint at proposal creation block
@@ -208,10 +209,12 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
 
         _hasVoted[proposalId][msg.sender] = true;
 
-        if (support) {
+        if (support == VoteType.For) {
             proposal.votesFor += weight;
-        } else {
+        } else if (support == VoteType.Against) {
             proposal.votesAgainst += weight;
+        } else {
+            proposal.votesAbstain += weight;
         }
 
         emit VoteCast(proposalId, msg.sender, support, weight);
@@ -264,7 +267,7 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
     /// @notice Path 1: Agent settles. Tries pre-committed calls first, falls back to custom calls. Enforces no loss.
     function settleByAgent(uint256 proposalId, BatchExecutorLib.Call[] calldata calls) external {
         StrategyProposal storage proposal = _proposals[proposalId];
-        if (proposal.state != ProposalState.Executed) revert ProposalNotExecuted();
+        if (_resolveState(proposal) != ProposalState.Executed) revert ProposalNotExecuted();
         if (msg.sender != proposal.proposer) revert NotProposer();
 
         // Try pre-committed unwind calls first, fall back to agent-provided calls
@@ -284,7 +287,7 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
     /// @notice Path 2: Permissionless settle using pre-committed calls. After duration.
     function settleProposal(uint256 proposalId) external {
         StrategyProposal storage proposal = _proposals[proposalId];
-        if (proposal.state != ProposalState.Executed) revert ProposalNotExecuted();
+        if (_resolveState(proposal) != ProposalState.Executed) revert ProposalNotExecuted();
         if (block.timestamp < proposal.executedAt + proposal.strategyDuration) revert StrategyDurationNotElapsed();
 
         // Run the pre-committed unwind calls
@@ -306,7 +309,7 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
     function emergencySettle(uint256 proposalId, BatchExecutorLib.Call[] calldata calls) external {
         StrategyProposal storage proposal = _proposals[proposalId];
         if (msg.sender != OwnableUpgradeable(proposal.vault).owner()) revert NotVaultOwner();
-        if (proposal.state != ProposalState.Executed) revert ProposalNotExecuted();
+        if (_resolveState(proposal) != ProposalState.Executed) revert ProposalNotExecuted();
         if (block.timestamp < proposal.executedAt + proposal.strategyDuration) revert StrategyDurationNotElapsed();
 
         // Try pre-committed unwind calls first, fall back to owner-provided calls
@@ -321,12 +324,13 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
     function cancelProposal(uint256 proposalId) external {
         StrategyProposal storage proposal = _proposals[proposalId];
         if (msg.sender != proposal.proposer) revert NotProposer();
+        ProposalState currentState = _resolveState(proposal);
         // Can cancel during Draft (collaborative) or Pending (voting) state
-        if (proposal.state != ProposalState.Pending && proposal.state != ProposalState.Draft) {
+        if (currentState != ProposalState.Pending && currentState != ProposalState.Draft) {
             revert ProposalNotCancellable();
         }
         // For Pending proposals, can only cancel during voting period
-        if (proposal.state == ProposalState.Pending && block.timestamp > proposal.voteEnd) {
+        if (currentState == ProposalState.Pending && block.timestamp > proposal.voteEnd) {
             revert ProposalNotCancellable();
         }
 
@@ -338,10 +342,11 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
     function emergencyCancel(uint256 proposalId) external {
         StrategyProposal storage proposal = _proposals[proposalId];
         if (msg.sender != OwnableUpgradeable(proposal.vault).owner()) revert NotVaultOwner();
-        // Can cancel anything that isn't already settled or cancelled
+        ProposalState currentState = _resolveState(proposal);
+        // Can cancel anything that isn't already settled, cancelled, or executed
         if (
-            proposal.state == ProposalState.Settled || proposal.state == ProposalState.Cancelled
-                || proposal.state == ProposalState.Executed
+            currentState == ProposalState.Settled || currentState == ProposalState.Cancelled
+                || currentState == ProposalState.Executed
         ) {
             revert ProposalNotCancellable();
         }
@@ -355,7 +360,7 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
     /// @inheritdoc ISyndicateGovernor
     function approveCollaboration(uint256 proposalId) external {
         StrategyProposal storage proposal = _proposals[proposalId];
-        if (proposal.state != ProposalState.Draft) revert NotDraftState();
+        if (_resolveState(proposal) != ProposalState.Draft) revert NotDraftState();
         if (block.timestamp > collaborationDeadline[proposalId]) revert CollaborationExpired();
 
         _requireCoProposer(proposalId);
@@ -387,7 +392,7 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
     /// @inheritdoc ISyndicateGovernor
     function rejectCollaboration(uint256 proposalId) external {
         StrategyProposal storage proposal = _proposals[proposalId];
-        if (proposal.state != ProposalState.Draft) revert NotDraftState();
+        if (_resolveState(proposal) != ProposalState.Draft) revert NotDraftState();
 
         _requireCoProposer(proposalId);
 
@@ -399,11 +404,13 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
     /// @inheritdoc ISyndicateGovernor
     function expireCollaboration(uint256 proposalId) external {
         StrategyProposal storage proposal = _proposals[proposalId];
-        if (proposal.state != ProposalState.Draft) revert NotDraftState();
-        if (block.timestamp <= collaborationDeadline[proposalId]) revert CollaborationNotExpired();
-
-        proposal.state = ProposalState.Expired;
-        emit CollaborationDeadlineExpired(proposalId);
+        ProposalState currentState = _resolveState(proposal);
+        // _resolveState auto-transitions Draft→Expired when deadline passes
+        if (currentState == ProposalState.Expired) return;
+        // Still in Draft — deadline hasn't passed yet
+        if (currentState == ProposalState.Draft) revert CollaborationNotExpired();
+        // Any other state
+        revert NotDraftState();
     }
 
     // ==================== VAULT MANAGEMENT ====================
@@ -700,7 +707,8 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
         if (block.timestamp <= proposal.voteEnd) return ProposalState.Pending;
 
         // Voting ended — determine outcome
-        uint256 totalVotes = proposal.votesFor + proposal.votesAgainst;
+        // Abstain votes count toward quorum but not for/against
+        uint256 totalVotes = proposal.votesFor + proposal.votesAgainst + proposal.votesAbstain;
         uint256 pastTotalSupply = IVotes(proposal.vault).getPastTotalSupply(proposal.snapshotTimestamp);
         uint256 quorumRequired = (pastTotalSupply * _params.quorumBps) / 10000;
 
@@ -731,7 +739,7 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
         if (proposal.state != ProposalState.Pending) return proposal.state;
         if (block.timestamp <= proposal.voteEnd) return ProposalState.Pending;
 
-        uint256 totalVotes = proposal.votesFor + proposal.votesAgainst;
+        uint256 totalVotes = proposal.votesFor + proposal.votesAgainst + proposal.votesAbstain;
         uint256 pastTotalSupply = IVotes(proposal.vault).getPastTotalSupply(proposal.snapshotTimestamp);
         uint256 quorumRequired = (pastTotalSupply * _params.quorumBps) / 10000;
 
