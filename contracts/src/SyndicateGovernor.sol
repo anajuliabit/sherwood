@@ -398,18 +398,6 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
         emit ProposalCancelled(proposalId, msg.sender);
     }
 
-    /// @inheritdoc ISyndicateGovernor
-    function expireCollaboration(uint256 proposalId) external {
-        StrategyProposal storage proposal = _proposals[proposalId];
-        ProposalState currentState = _resolveState(proposal);
-        // _resolveState auto-transitions Draft→Expired when deadline passes
-        if (currentState == ProposalState.Expired) return;
-        // Still in Draft — deadline hasn't passed yet
-        if (currentState == ProposalState.Draft) revert CollaborationNotExpired();
-        // Any other state
-        revert NotDraftState();
-    }
-
     // ==================== VAULT MANAGEMENT ====================
 
     /// @inheritdoc ISyndicateGovernor

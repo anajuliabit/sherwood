@@ -335,7 +335,7 @@ contract CollaborativeProposalsTest is Test {
 
     // ==================== EXPIRY ====================
 
-    function test_expiry_afterDeadline_expires() public {
+    function test_expiry_afterDeadline_autoResolves() public {
         uint256 proposalId = _createCollabProposal();
 
         // Only one approves
@@ -345,45 +345,27 @@ contract CollaborativeProposalsTest is Test {
         // Warp past collaboration window (default 48h)
         vm.warp(block.timestamp + 48 hours + 1);
 
-        // State auto-resolves to Expired
+        // State auto-resolves to Expired via getProposalState
         assertEq(uint256(governor.getProposalState(proposalId)), uint256(ISyndicateGovernor.ProposalState.Expired));
-
-        // expireCollaboration is a no-op (already expired by _resolveState)
-        vm.prank(random);
-        governor.expireCollaboration(proposalId);
-
-        ISyndicateGovernor.StrategyProposal memory p = governor.getProposal(proposalId);
-        assertEq(uint256(p.state), uint256(ISyndicateGovernor.ProposalState.Expired));
     }
 
-    function test_expiry_autoResolvesViaStateView() public {
+    function test_expiry_beforeDeadline_stillDraft() public {
         uint256 proposalId = _createCollabProposal();
 
-        // Warp past collaboration window
-        vm.warp(block.timestamp + 48 hours + 1);
-
-        // getProposalState should auto-resolve to Expired without calling expireCollaboration
-        ISyndicateGovernor.ProposalState state = governor.getProposalState(proposalId);
-        assertEq(uint256(state), uint256(ISyndicateGovernor.ProposalState.Expired));
+        // Still within deadline
+        assertEq(uint256(governor.getProposalState(proposalId)), uint256(ISyndicateGovernor.ProposalState.Draft));
     }
 
-    function test_expiry_beforeDeadline_reverts() public {
+    function test_expiry_blocksApproval() public {
         uint256 proposalId = _createCollabProposal();
 
-        vm.prank(random);
-        vm.expectRevert(ISyndicateGovernor.CollaborationNotExpired.selector);
-        governor.expireCollaboration(proposalId);
-    }
-
-    function test_expiry_notDraftState_reverts() public {
-        uint256 proposalId = _createApprovedCollabProposal();
-
-        // Now in Pending, try to expire
+        // Warp past deadline
         vm.warp(block.timestamp + 48 hours + 1);
 
-        vm.prank(random);
+        // Trying to approve after expiry reverts
+        vm.prank(coAgent1);
         vm.expectRevert(ISyndicateGovernor.NotDraftState.selector);
-        governor.expireCollaboration(proposalId);
+        governor.approveCollaboration(proposalId);
     }
 
     // ==================== SETTLEMENT FEE DISTRIBUTION ====================

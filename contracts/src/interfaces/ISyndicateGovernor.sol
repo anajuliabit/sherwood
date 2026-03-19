@@ -95,7 +95,6 @@ interface ISyndicateGovernor {
     // ── Collaborative proposal errors ──
     error NotCoProposer();
     error CollaborationExpired();
-    error CollaborationNotExpired();
     error AlreadyApproved();
     error InvalidSplits();
     error TooManyCoProposers();
@@ -184,7 +183,6 @@ interface ISyndicateGovernor {
 
     function approveCollaboration(uint256 proposalId) external;
     function rejectCollaboration(uint256 proposalId) external;
-    function expireCollaboration(uint256 proposalId) external;
 
     // ── Setters ──
 
