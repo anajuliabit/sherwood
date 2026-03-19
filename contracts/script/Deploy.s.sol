@@ -77,7 +77,9 @@ contract Deploy is Script {
                 1 days, // executionWindow
                 4000, // quorumBps (40%)
                 3000, // maxPerformanceFeeBps (30%)
-                1 days // cooldownPeriod
+                1 days, // cooldownPeriod
+                1 days, // minStrategyDuration
+                7 days // maxStrategyDuration
             )
         );
         address governorProxy = address(new ERC1967Proxy(address(govImpl), govInitData));

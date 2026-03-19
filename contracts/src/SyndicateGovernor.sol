@@ -116,9 +116,15 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
         uint256 executionWindow_,
         uint256 quorumBps_,
         uint256 maxPerformanceFeeBps_,
-        uint256 cooldownPeriod_
+        uint256 cooldownPeriod_,
+        uint256 minStrategyDuration_,
+        uint256 maxStrategyDuration_
     ) external initializer {
         if (owner_ == address(0)) revert ZeroAddress();
+        if (
+            minStrategyDuration_ < ABSOLUTE_MIN_STRATEGY_DURATION
+                || maxStrategyDuration_ > ABSOLUTE_MAX_STRATEGY_DURATION || minStrategyDuration_ > maxStrategyDuration_
+        ) revert InvalidStrategyDurationBounds();
 
         __Ownable_init(owner_);
 
@@ -138,8 +144,8 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
 
         _collaborationWindow = DEFAULT_COLLABORATION_WINDOW;
         _maxCoProposers = DEFAULT_MAX_CO_PROPOSERS;
-        _minStrategyDuration = DEFAULT_MIN_STRATEGY_DURATION;
-        _maxStrategyDuration = DEFAULT_MAX_STRATEGY_DURATION;
+        _minStrategyDuration = minStrategyDuration_;
+        _maxStrategyDuration = maxStrategyDuration_;
     }
 
     // ==================== PROPOSAL LIFECYCLE ====================

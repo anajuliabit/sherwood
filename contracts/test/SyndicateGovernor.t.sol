@@ -75,7 +75,7 @@ contract SyndicateGovernorTest is Test {
         SyndicateGovernor govImpl = new SyndicateGovernor();
         bytes memory govInit = abi.encodeCall(
             SyndicateGovernor.initialize,
-            (owner, VOTING_PERIOD, EXECUTION_WINDOW, QUORUM_BPS, MAX_PERF_FEE_BPS, COOLDOWN_PERIOD)
+            (owner, VOTING_PERIOD, EXECUTION_WINDOW, QUORUM_BPS, MAX_PERF_FEE_BPS, COOLDOWN_PERIOD, 1 days, 7 days)
         );
         governor = SyndicateGovernor(address(new ERC1967Proxy(address(govImpl), govInit)));
 
