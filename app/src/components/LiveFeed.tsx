@@ -287,7 +287,7 @@ export default function LiveFeed({
   const isLive = wsConnected || (messages && messages.length > 0);
 
   return (
-    <div className="panel">
+    <div className="panel" style={{ display: "flex", flexDirection: "column" }}>
       <div className="panel-title">
         <span>Live Intelligence Feed</span>
         <span
@@ -299,7 +299,7 @@ export default function LiveFeed({
           {isLive ? "● REAL-TIME" : "● OFFLINE"}
         </span>
       </div>
-      <div style={{ maxHeight: "320px", overflowY: "auto" }}>
+      <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
         {displayFeed.map((item) => (
           <div
             className="feed-item"
