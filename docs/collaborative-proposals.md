@@ -51,17 +51,74 @@ The lead proposer's split is implicit: `10000 - sum(coProposer.splitBps)`. In th
 5. **Maximum co-proposers: 5.** Bounds the gas cost of fee distribution at settlement. (Lead + 5 = 6 total recipients max.)
 6. **Lead proposer retains at least 1000 BPS (10%).** The submitter must have meaningful skin in the game.
 
+### Co-Proposer Consent
+
+Co-proposers **must explicitly consent** before a collaborative proposal goes to vote. This prevents agents from being associated with strategies they disagree with or didn't review.
+
+**Flow:**
+
+1. Lead proposer calls `propose()` with `coProposers[]`. Proposal is created in **`Draft`** state (new state, not yet votable).
+2. Each co-proposer calls `approveCollaboration(proposalId)` to consent. This records their approval on-chain.
+3. Once **all** co-proposers have approved, the proposal automatically transitions to **`Pending`** (existing state — voting countdown begins).
+4. If any co-proposer calls `rejectCollaboration(proposalId)`, the proposal is cancelled.
+5. **Consent deadline:** Co-proposers have `collaborationWindow` (configurable, default 48 hours) to approve. If the window expires with missing approvals, the proposal is automatically cancelled (anyone can call `expireCollaboration(proposalId)` to trigger cleanup).
+
+**Why on-chain consent (not off-chain signatures)?**
+- Simpler — no EIP-712 typed data or signature aggregation needed
+- Transparent — voters can verify all agents explicitly approved
+- Auditable — consent is an on-chain event, not an off-chain blob
+- Agents are already on-chain actors (PKP addresses) — calling a function is trivial
+
+```solidity
+// New state: Draft (before Pending)
+enum ProposalState {
+    Draft,       // NEW: collaborative proposal awaiting co-proposer consent
+    Pending,
+    Active,
+    Queued,
+    Executed,
+    Settled,
+    Defeated,
+    Expired,
+    Cancelled
+}
+
+// New storage
+mapping(uint256 => mapping(address => bool)) private _coProposerApprovals;
+uint256 private _collaborationWindow; // seconds, default 48h
+
+// New functions
+function approveCollaboration(uint256 proposalId) external;
+function rejectCollaboration(uint256 proposalId) external;
+function expireCollaboration(uint256 proposalId) external;
+
+// New events
+event CollaborationApproved(uint256 indexed proposalId, address indexed agent);
+event CollaborationRejected(uint256 indexed proposalId, address indexed agent);
+event CollaborationExpired(uint256 indexed proposalId);
+```
+
+**Solo proposals skip Draft entirely** — empty `coProposers[]` goes straight to `Pending` as today.
+
 ### Proposal Lifecycle Changes
 
-The proposal lifecycle remains the same (Pending → Active → Queued → Executed → Settled), with these adjustments:
+The proposal lifecycle adds a `Draft` state for collaborative proposals:
+
+```
+Solo:          Pending → Active → Queued → Executed → Settled
+Collaborative: Draft → Pending → Active → Queued → Executed → Settled
+                 ↓         (after all co-proposers approve)
+              Cancelled   (if any reject or window expires)
+```
 
 | Action | Current (single) | Collaborative |
 |--------|-------------------|---------------|
-| Submit | `proposer` only | Lead proposer submits with `coProposers[]` |
-| Vote | All veWOOD/share holders | No change |
+| Submit | `proposer` only | Lead proposer submits with `coProposers[]` → Draft state |
+| Consent | N/A | Each co-proposer calls `approveCollaboration()` |
+| Vote | All veWOOD/share holders | No change (starts after all consent) |
 | Execute | `proposer` only | Lead proposer only (single point of accountability) |
 | Settle (agent) | `proposer` only | Lead proposer only |
-| Cancel | `proposer` or owner | Lead proposer or owner |
+| Cancel | `proposer` or owner | Lead proposer, any co-proposer (via reject), or owner |
 | Fee distribution | 100% to `proposer` | Split per `coProposers[]` + lead remainder |
 
 **Key decision: only the lead proposer can execute and settle.** This keeps accountability clear — one agent is responsible for the strategy's execution, even if others contributed to its design. Co-proposers are compensated for their contribution but don't have operational control.
@@ -142,13 +199,23 @@ event CollaborativeProposalCreated(
 **Storage additions:**
 ```solidity
 mapping(uint256 => CoProposer[]) private _coProposers;
+mapping(uint256 => mapping(address => bool)) private _coProposerApprovals;
+mapping(uint256 => uint256) private _collaborationDeadline;
+uint256 private _collaborationWindow; // default 48 hours
 ```
 
 **`propose()` changes:**
 - Accept `CoProposer[] calldata coProposers` parameter
 - Validate: all agents registered, no duplicates, splits sum correctly, minimum/maximum checks
 - Store co-proposers in `_coProposers[proposalId]`
+- If `coProposers.length > 0`: set state to `Draft`, record `_collaborationDeadline[proposalId] = block.timestamp + _collaborationWindow`
+- If `coProposers.length == 0`: set state to `Pending` (current behavior)
 - Emit `CollaborativeProposalCreated` event
+
+**New functions:**
+- `approveCollaboration(proposalId)` — co-proposer consents; if all approved, transition Draft → Pending
+- `rejectCollaboration(proposalId)` — co-proposer rejects; cancels proposal
+- `expireCollaboration(proposalId)` — anyone can call after deadline; cancels if not all approved
 
 **`_finishSettlement()` changes:**
 - Replace single `transferPerformanceFee` call with distribution loop
@@ -157,6 +224,7 @@ mapping(uint256 => CoProposer[]) private _coProposers;
 **Backward compatibility:**
 - Empty `coProposers[]` array = solo proposal (current behavior, no extra gas)
 - No changes to voting, execution, or cancellation logic
+- `Draft` state only reachable via collaborative proposals
 
 ### Gas Considerations
 
@@ -215,7 +283,7 @@ This is informational (not enforced on-chain) but helps voters evaluate collabor
 
 ## Open Questions
 
-1. **Co-proposer consent:** Should co-proposers need to sign/approve before the proposal goes to vote? Current spec allows lead to add anyone. Tradeoff: consent adds an approval step (slower) but prevents agents from being associated with strategies they disagree with.
+1. ~~**Co-proposer consent:**~~ **Resolved** — Yes, consent required. See §Co-Proposer Consent below.
 
 2. **Dynamic splits:** Should splits be adjustable after proposal creation but before execution? Could enable negotiation but adds complexity.
 
@@ -225,10 +293,13 @@ This is informational (not enforced on-chain) but helps voters evaluate collabor
 
 ## Implementation Order
 
-1. Add `CoProposer` struct and storage mapping to governor
-2. Update `propose()` with validation + storage
-3. Update `_finishSettlement()` with distribution loop
-4. Add `getCoProposers()` view function
-5. Update CLI `proposal create` command to accept `--co-proposer <address:splitBps>` flags
-6. Update app proposals page to display co-proposers and splits
-7. Write tests: solo (backward compat), 2-agent, max 5, invalid splits, unregistered agent, settlement distribution, rounding
+1. Add `CoProposer` struct, `Draft` state, and storage mappings to governor
+2. Update `propose()` with validation, co-proposer storage, and Draft/Pending state routing
+3. Implement `approveCollaboration()`, `rejectCollaboration()`, `expireCollaboration()`
+4. Update `_finishSettlement()` with distribution loop
+5. Add `getCoProposers()` view function
+6. Add `setCollaborationWindow()` governance parameter
+7. Update CLI `proposal create` command to accept `--co-proposer <address:splitBps>` flags
+8. Add CLI `proposal approve` / `proposal reject` commands for co-proposers
+9. Update app proposals page to display Draft state, co-proposers, splits, and consent status
+10. Write tests: solo backward compat, consent flow (approve all → Pending), partial consent + expiry, rejection → cancel, 2-agent split, max 5, invalid splits, unregistered agent, settlement distribution, rounding
