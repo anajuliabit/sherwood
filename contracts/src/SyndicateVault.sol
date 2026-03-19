@@ -263,13 +263,6 @@ contract SyndicateVault is
     }
 
     /// @inheritdoc ISyndicateVault
-    function setGovernor(address governor_) external onlyOwner {
-        address old = _governor;
-        _governor = governor_;
-        emit GovernorUpdated(old, governor_);
-    }
-
-    /// @inheritdoc ISyndicateVault
     function executeGovernorBatch(BatchExecutorLib.Call[] calldata calls) external onlyGovernor {
         (bool success, bytes memory returnData) =
             _executorImpl.delegatecall(abi.encodeCall(BatchExecutorLib.executeBatch, (calls)));
@@ -292,7 +285,6 @@ contract SyndicateVault is
 
     /// @inheritdoc ISyndicateVault
     function redemptionsLocked() external view returns (bool) {
-        if (_governor == address(0)) return false;
         return ISyndicateGovernor(_governor).getActiveProposal(address(this)) != 0;
     }
 
@@ -349,9 +341,7 @@ contract SyndicateVault is
         override
         whenNotPaused
     {
-        if (_governor != address(0) && ISyndicateGovernor(_governor).getActiveProposal(address(this)) != 0) {
-            revert RedemptionsLocked();
-        }
+        if (ISyndicateGovernor(_governor).getActiveProposal(address(this)) != 0) revert RedemptionsLocked();
         if (assets > _totalDeposited) {
             _totalDeposited = 0;
         } else {

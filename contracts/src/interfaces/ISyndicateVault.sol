@@ -69,7 +69,6 @@ interface ISyndicateVault {
     function getAgentOperators() external view returns (address[] memory);
 
     // ── Governor ──
-    function setGovernor(address governor_) external;
     function executeGovernorBatch(BatchExecutorLib.Call[] calldata calls) external;
     function transferPerformanceFee(address asset, address to, uint256 amount) external;
     function governor() external view returns (address);
@@ -89,5 +88,4 @@ interface ISyndicateVault {
     event DepositorApproved(address indexed depositor);
     event DepositorRemoved(address indexed depositor);
     event OpenDepositsUpdated(bool open);
-    event GovernorUpdated(address indexed oldGovernor, address indexed newGovernor);
 }

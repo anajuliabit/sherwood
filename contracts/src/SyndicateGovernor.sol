@@ -203,7 +203,6 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
         StrategyProposal storage proposal = _proposals[proposalId];
         if (proposal.id == 0) revert ProposalNotApproved(); // proposal doesn't exist
         if (_resolveState(proposal) != ProposalState.Pending) revert NotWithinVotingPeriod();
-        if (block.timestamp > proposal.voteEnd) revert NotWithinVotingPeriod();
         if (_hasVoted[proposalId][msg.sender]) revert AlreadyVoted();
 
         // Get vote weight from ERC20Votes checkpoint at proposal creation block
@@ -227,10 +226,9 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
     function executeProposal(uint256 proposalId) external {
         StrategyProposal storage proposal = _proposals[proposalId];
 
-        // Resolve state (may transition from Pending to Approved/Rejected/Expired)
+        // Resolve state (may transition Pending→Approved/Rejected/Expired or Approved→Expired)
         ProposalState currentState = _resolveState(proposal);
         if (currentState != ProposalState.Approved) revert ProposalNotApproved();
-        if (block.timestamp > proposal.executeBy) revert ExecutionWindowExpired();
 
         address vault = proposal.vault;
         if (_activeProposal[vault] != 0) revert StrategyAlreadyActive();
@@ -688,8 +686,10 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
     }
 
     function _resolveState(StrategyProposal storage proposal) internal returns (ProposalState) {
-        // Auto-expire Draft proposals past collaboration deadline
-        if (proposal.state == ProposalState.Draft) {
+        ProposalState stored = proposal.state;
+
+        // Draft → Expired when collaboration deadline passes
+        if (stored == ProposalState.Draft) {
             if (block.timestamp > collaborationDeadline[proposal.id]) {
                 proposal.state = ProposalState.Expired;
                 emit CollaborationDeadlineExpired(proposal.id);
@@ -698,55 +698,80 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
             return ProposalState.Draft;
         }
 
-        if (proposal.state != ProposalState.Pending) return proposal.state;
-        if (block.timestamp <= proposal.voteEnd) return ProposalState.Pending;
+        // Pending → Approved/Rejected/Expired when voting ends
+        if (stored == ProposalState.Pending) {
+            if (block.timestamp <= proposal.voteEnd) return ProposalState.Pending;
 
-        // Voting ended — determine outcome
-        // Abstain votes count toward quorum but not for/against
-        uint256 totalVotes = proposal.votesFor + proposal.votesAgainst + proposal.votesAbstain;
-        uint256 pastTotalSupply = IVotes(proposal.vault).getPastTotalSupply(proposal.snapshotTimestamp);
-        uint256 quorumRequired = (pastTotalSupply * _params.quorumBps) / 10000;
+            // Voting ended — determine outcome
+            // Abstain votes count toward quorum but not for/against
+            uint256 totalVotes = proposal.votesFor + proposal.votesAgainst + proposal.votesAbstain;
+            uint256 pastTotalSupply = IVotes(proposal.vault).getPastTotalSupply(proposal.snapshotTimestamp);
+            uint256 quorumRequired = (pastTotalSupply * _params.quorumBps) / 10000;
 
-        if (totalVotes < quorumRequired || proposal.votesFor <= proposal.votesAgainst) {
-            proposal.state = ProposalState.Rejected;
-            return ProposalState.Rejected;
+            if (totalVotes < quorumRequired || proposal.votesFor <= proposal.votesAgainst) {
+                proposal.state = ProposalState.Rejected;
+                return ProposalState.Rejected;
+            }
+
+            if (block.timestamp > proposal.executeBy) {
+                proposal.state = ProposalState.Expired;
+                return ProposalState.Expired;
+            }
+
+            proposal.state = ProposalState.Approved;
+            return ProposalState.Approved;
         }
 
-        if (block.timestamp > proposal.executeBy) {
-            proposal.state = ProposalState.Expired;
-            return ProposalState.Expired;
+        // Approved → Expired when execution window passes
+        if (stored == ProposalState.Approved) {
+            if (block.timestamp > proposal.executeBy) {
+                proposal.state = ProposalState.Expired;
+                return ProposalState.Expired;
+            }
+            return ProposalState.Approved;
         }
 
-        proposal.state = ProposalState.Approved;
-        return ProposalState.Approved;
+        // Executed, Settled, Cancelled, Rejected, Expired — terminal states
+        return stored;
     }
 
     /// @dev View-only version of state resolution (doesn't modify storage)
     function _resolveStateView(StrategyProposal storage proposal) internal view returns (ProposalState) {
-        // Auto-expire Draft proposals past collaboration deadline
-        if (proposal.state == ProposalState.Draft) {
+        ProposalState stored = proposal.state;
+
+        if (stored == ProposalState.Draft) {
             if (block.timestamp > collaborationDeadline[proposal.id]) {
                 return ProposalState.Expired;
             }
             return ProposalState.Draft;
         }
 
-        if (proposal.state != ProposalState.Pending) return proposal.state;
-        if (block.timestamp <= proposal.voteEnd) return ProposalState.Pending;
+        if (stored == ProposalState.Pending) {
+            if (block.timestamp <= proposal.voteEnd) return ProposalState.Pending;
 
-        uint256 totalVotes = proposal.votesFor + proposal.votesAgainst + proposal.votesAbstain;
-        uint256 pastTotalSupply = IVotes(proposal.vault).getPastTotalSupply(proposal.snapshotTimestamp);
-        uint256 quorumRequired = (pastTotalSupply * _params.quorumBps) / 10000;
+            uint256 totalVotes = proposal.votesFor + proposal.votesAgainst + proposal.votesAbstain;
+            uint256 pastTotalSupply = IVotes(proposal.vault).getPastTotalSupply(proposal.snapshotTimestamp);
+            uint256 quorumRequired = (pastTotalSupply * _params.quorumBps) / 10000;
 
-        if (totalVotes < quorumRequired || proposal.votesFor <= proposal.votesAgainst) {
-            return ProposalState.Rejected;
+            if (totalVotes < quorumRequired || proposal.votesFor <= proposal.votesAgainst) {
+                return ProposalState.Rejected;
+            }
+
+            if (block.timestamp > proposal.executeBy) {
+                return ProposalState.Expired;
+            }
+
+            return ProposalState.Approved;
         }
 
-        if (block.timestamp > proposal.executeBy) {
-            return ProposalState.Expired;
+        if (stored == ProposalState.Approved) {
+            if (block.timestamp > proposal.executeBy) {
+                return ProposalState.Expired;
+            }
+            return ProposalState.Approved;
         }
 
-        return ProposalState.Approved;
+        return stored;
     }
 
     function _finishSettlement(uint256 proposalId, StrategyProposal storage proposal)

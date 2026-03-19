@@ -387,6 +387,19 @@ contract SyndicateGovernorTest is Test {
         assertEq(uint256(governor.getProposalState(proposalId)), uint256(ISyndicateGovernor.ProposalState.Rejected));
     }
 
+    function test_proposalState_rejected_abstainOnly() public {
+        (uint256 proposalId,) = _createSimpleProposal(1500, 7 days);
+
+        // Both LPs abstain — meets quorum but votesFor (0) <= votesAgainst (0) → rejected
+        vm.prank(lp1);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.Abstain);
+        vm.prank(lp2);
+        governor.vote(proposalId, ISyndicateGovernor.VoteType.Abstain);
+
+        vm.warp(block.timestamp + VOTING_PERIOD + 1);
+        assertEq(uint256(governor.getProposalState(proposalId)), uint256(ISyndicateGovernor.ProposalState.Rejected));
+    }
+
     function test_proposalState_expired() public {
         uint256 proposalId = _createApprovedProposal(1500, 7 days);
 
@@ -862,7 +875,7 @@ contract SyndicateGovernorTest is Test {
 
     // ==================== GOVERNOR ON VAULT ====================
 
-    function test_setGovernor_onVault() public view {
+    function test_governorSetAtInit() public view {
         assertEq(vault.governor(), address(governor));
     }
 
