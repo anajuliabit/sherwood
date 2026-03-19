@@ -78,7 +78,7 @@ syndicate
   .option("--subdomain <name>", "ENS subdomain (skip prompt)")
   .option("--name <name>", "Syndicate name (skip prompt)")
   .option("--agent-id <id>", "ERC-8004 agent identity token ID (skip prompt)")
-  .option("--asset <address>", "Underlying asset address")
+  .option("--asset <symbol-or-address>", "Vault asset: USDC, WETH, or a token address")
   .option("--description <text>", "Short description")
   .option("--metadata-uri <uri>", "Override metadata URI (skip IPFS upload)")
   .option("--open-deposits", "Allow anyone to deposit (no whitelist)")
@@ -126,7 +126,36 @@ syndicate
       });
 
       // ── Resolve asset ──
-      const asset = (opts.asset || TOKENS().USDC) as Address;
+      // Supported symbols (testnet + mainnet). Will expand on mainnet launch.
+      const ASSET_SYMBOLS: Record<string, Address> = {
+        USDC: TOKENS().USDC,
+        WETH: TOKENS().WETH,
+      };
+
+      let asset: Address;
+      if (opts.asset) {
+        const upper = opts.asset.toUpperCase();
+        if (ASSET_SYMBOLS[upper]) {
+          asset = ASSET_SYMBOLS[upper];
+        } else if (opts.asset.startsWith("0x") && opts.asset.length === 42) {
+          asset = opts.asset as Address;
+        } else {
+          const supported = Object.keys(ASSET_SYMBOLS).join(", ");
+          console.error(chalk.red(`  Unknown asset "${opts.asset}". Use a symbol (${supported}) or a 0x address.`));
+          process.exit(1);
+        }
+      } else {
+        // Interactive prompt — no silent default
+        const assetChoice = await select({
+          message: G("Vault asset (what token do depositors provide?)"),
+          choices: [
+            { name: "USDC", value: "USDC", description: "USD Coin (6 decimals)" },
+            { name: "WETH", value: "WETH", description: "Wrapped Ether (18 decimals)" },
+          ],
+        });
+        asset = ASSET_SYMBOLS[assetChoice];
+      }
+
       const publicClient = getPublicClient();
       const [decimals, assetSymbol] = await Promise.all([
         publicClient.readContract({ address: asset, abi: ERC20_ABI, functionName: "decimals" }) as Promise<number>,
@@ -1000,8 +1029,9 @@ strategy
 program
   .command("providers")
   .description("List available DeFi providers")
-  .action(() => {
-    const providers = [new MoonwellProvider(), new UniswapProvider()];
+  .action(async () => {
+    const { MessariProvider, NansenProvider } = await import("./providers/research/index.js");
+    const providers = [new MoonwellProvider(), new UniswapProvider(), new MessariProvider(), new NansenProvider()];
     for (const p of providers) {
       const info = p.info();
       console.log(`\n${info.name} (${info.type})`);
@@ -1026,6 +1056,10 @@ try {
     });
 }
 
+// ── Session commands ──
+const { registerSessionCommands } = await import("./commands/session.js");
+registerSessionCommands(program);
+
 // ── Venice commands ──
 registerVeniceCommands(program);
 
@@ -1040,6 +1074,10 @@ registerProposalCommands(program);
 
 // ── Governor commands ──
 registerGovernorCommands(program);
+
+// ── Research commands ──
+const { registerResearchCommands } = await import("./commands/research.js");
+registerResearchCommands(program);
 
 // ── Config commands ──
 const configCmd = program.command("config");
