@@ -705,6 +705,8 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
         }
     }
 
+    /// @dev Lazily resolve proposal state, writing transitions to storage.
+    /// IMPORTANT: keep in sync with _resolveStateView() below.
     function _resolveState(StrategyProposal storage proposal) internal returns (ProposalState) {
         ProposalState stored = proposal.state;
 
@@ -755,7 +757,8 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
         return stored;
     }
 
-    /// @dev View-only version of state resolution (doesn't modify storage)
+    /// @dev View-only version of state resolution (doesn't modify storage).
+    /// IMPORTANT: keep in sync with _resolveState() above.
     function _resolveStateView(StrategyProposal storage proposal) internal view returns (ProposalState) {
         ProposalState stored = proposal.state;
 
@@ -834,7 +837,10 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
                             distributed += share;
                         }
                     }
-                    // Lead proposer gets remainder (handles rounding)
+                    // Lead proposer gets remainder (handles rounding).
+                    // The lead is NOT checked for registration — they initiated and executed
+                    // the strategy, so they earn their share even if later deregistered.
+                    // Co-proposers ARE checked because they may have been removed for cause.
                     uint256 leadShare = agentFee - distributed;
                     if (leadShare > 0) {
                         ISyndicateVault(vault).transferPerformanceFee(asset, proposal.proposer, leadShare);

@@ -538,6 +538,23 @@ export const SYNDICATE_GOVERNOR_ABI = [
     inputs: [{ name: "vault", type: "address" }],
     outputs: [{ name: "", type: "bool" }],
   },
+  {
+    name: "collaborationDeadline",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "proposalId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "coProposerApprovals",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "proposalId", type: "uint256" },
+      { name: "agent", type: "address" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
 ] as const;
 
 export const ERC20_ABI = [

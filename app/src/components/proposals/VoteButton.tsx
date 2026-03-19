@@ -185,6 +185,19 @@ export default function VoteButton({
         >
           {busy ? "..." : "Vote AGAINST"}
         </button>
+        <button
+          onClick={() => castVote(2)}
+          disabled={busy}
+          style={{
+            ...btnBase,
+            background: busy ? "transparent" : "rgba(255, 255, 255, 0.08)",
+            color: "rgba(255, 255, 255, 0.5)",
+            borderColor: "rgba(255, 255, 255, 0.25)",
+            opacity: busy ? 0.5 : 1,
+          }}
+        >
+          {busy ? "..." : "ABSTAIN"}
+        </button>
       </div>
     </div>
   );
