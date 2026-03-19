@@ -42,14 +42,15 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
     uint256 public constant MIN_COOLDOWN_PERIOD = 1 hours;
     uint256 public constant MAX_COOLDOWN_PERIOD = 30 days;
 
-    // ── Collaborative proposal constants ──
+    // ── Collaborative proposal constants (safety bounds) ──
 
-    uint256 public constant MAX_CO_PROPOSERS = 5;
-    uint256 public constant MIN_SPLIT_BPS = 100; // 1%
-    uint256 public constant MIN_LEAD_SPLIT_BPS = 1000; // 10%
+    uint256 public constant DEFAULT_MAX_CO_PROPOSERS = 5;
+    uint256 public constant DEFAULT_MIN_SPLIT_BPS = 100; // 1%
+    uint256 public constant DEFAULT_MIN_LEAD_SPLIT_BPS = 1000; // 10%
     uint256 public constant DEFAULT_COLLABORATION_WINDOW = 48 hours;
     uint256 public constant MIN_COLLABORATION_WINDOW = 1 hours;
     uint256 public constant MAX_COLLABORATION_WINDOW = 7 days;
+    uint256 public constant ABSOLUTE_MAX_CO_PROPOSERS = 10;
 
     // ── Storage (existing — DO NOT reorder) ──
 
@@ -94,6 +95,15 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
     /// @notice Time window for co-proposer consent (seconds)
     uint256 private _collaborationWindow;
 
+    /// @notice Max number of co-proposers per proposal
+    uint256 private _maxCoProposers;
+
+    /// @notice Minimum split in BPS for any co-proposer
+    uint256 private _minSplitBps;
+
+    /// @notice Minimum split in BPS for the lead proposer
+    uint256 private _minLeadSplitBps;
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -129,6 +139,9 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
         });
 
         _collaborationWindow = DEFAULT_COLLABORATION_WINDOW;
+        _maxCoProposers = DEFAULT_MAX_CO_PROPOSERS;
+        _minSplitBps = DEFAULT_MIN_SPLIT_BPS;
+        _minLeadSplitBps = DEFAULT_MIN_LEAD_SPLIT_BPS;
     }
 
     // ==================== PROPOSAL LIFECYCLE ====================
@@ -494,6 +507,32 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
         emit CollaborationWindowUpdated(old, newCollaborationWindow);
     }
 
+    /// @inheritdoc ISyndicateGovernor
+    function setMaxCoProposers(uint256 newMaxCoProposers) external onlyOwner {
+        if (newMaxCoProposers == 0 || newMaxCoProposers > ABSOLUTE_MAX_CO_PROPOSERS) {
+            revert InvalidMaxCoProposers();
+        }
+        uint256 old = _maxCoProposers;
+        _maxCoProposers = newMaxCoProposers;
+        emit MaxCoProposersUpdated(old, newMaxCoProposers);
+    }
+
+    /// @inheritdoc ISyndicateGovernor
+    function setMinSplitBps(uint256 newMinSplitBps) external onlyOwner {
+        if (newMinSplitBps == 0 || newMinSplitBps >= _minLeadSplitBps) revert InvalidMinSplitBps();
+        uint256 old = _minSplitBps;
+        _minSplitBps = newMinSplitBps;
+        emit MinSplitBpsUpdated(old, newMinSplitBps);
+    }
+
+    /// @inheritdoc ISyndicateGovernor
+    function setMinLeadSplitBps(uint256 newMinLeadSplitBps) external onlyOwner {
+        if (newMinLeadSplitBps == 0 || newMinLeadSplitBps > 5000) revert InvalidMinLeadSplitBps();
+        uint256 old = _minLeadSplitBps;
+        _minLeadSplitBps = newMinLeadSplitBps;
+        emit MinLeadSplitBpsUpdated(old, newMinLeadSplitBps);
+    }
+
     // ==================== VIEWS ====================
 
     /// @inheritdoc ISyndicateGovernor
@@ -573,6 +612,21 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
         return _collaborationWindow;
     }
 
+    /// @inheritdoc ISyndicateGovernor
+    function getMaxCoProposers() external view returns (uint256) {
+        return _maxCoProposers;
+    }
+
+    /// @inheritdoc ISyndicateGovernor
+    function getMinSplitBps() external view returns (uint256) {
+        return _minSplitBps;
+    }
+
+    /// @inheritdoc ISyndicateGovernor
+    function getMinLeadSplitBps() external view returns (uint256) {
+        return _minLeadSplitBps;
+    }
+
     // ==================== INTERNAL ====================
 
     /// @dev Store proposal calls separately for gas efficiency
@@ -615,7 +669,7 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
 
     /// @dev Validate co-proposer array: registered agents, no duplicates, valid splits
     function _validateCoProposers(address vault, CoProposer[] calldata coProposers) internal view {
-        if (coProposers.length > MAX_CO_PROPOSERS) revert TooManyCoProposers();
+        if (coProposers.length > _maxCoProposers) revert TooManyCoProposers();
 
         uint256 totalCoSplitBps = 0;
         for (uint256 i = 0; i < coProposers.length; i++) {
@@ -629,7 +683,7 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
             if (coAgent == msg.sender) revert DuplicateCoProposer();
 
             // Minimum split
-            if (splitBps < MIN_SPLIT_BPS) revert SplitTooLow();
+            if (splitBps < _minSplitBps) revert SplitTooLow();
 
             // Check for duplicates within co-proposers array
             for (uint256 j = 0; j < i; j++) {
@@ -642,7 +696,7 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
         // Lead split = 10000 - totalCoSplitBps
         if (totalCoSplitBps >= 10000) revert InvalidSplits();
         uint256 leadSplitBps = 10000 - totalCoSplitBps;
-        if (leadSplitBps < MIN_LEAD_SPLIT_BPS) revert LeadSplitTooLow();
+        if (leadSplitBps < _minLeadSplitBps) revert LeadSplitTooLow();
     }
 
     /// @dev Try pre-committed unwind calls first. If they revert, run the fallback calls.
