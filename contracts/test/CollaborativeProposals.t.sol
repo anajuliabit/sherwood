@@ -486,8 +486,30 @@ contract CollaborativeProposalsTest is Test {
         // Total co = 10000, lead = 0 → LeadSplitTooLow
 
         vm.prank(leadAgent);
-        vm.expectRevert(ISyndicateGovernor.InvalidSplits.selector);
+        vm.expectRevert(ISyndicateGovernor.LeadSplitTooLow.selector);
         governor.propose(address(vault), "ipfs://test", 2000, 7 days, _simpleCalls(), 1, coProps);
+    }
+
+    function test_validation_leadSplitBelow10Percent() public {
+        // Two co-proposers taking 91% total → lead gets 9% → should revert
+        ISyndicateGovernor.CoProposer[] memory coProps = new ISyndicateGovernor.CoProposer[](2);
+        coProps[0] = ISyndicateGovernor.CoProposer({agent: coAgent1, splitBps: 5000});
+        coProps[1] = ISyndicateGovernor.CoProposer({agent: coAgent2, splitBps: 4100}); // total 9100, lead = 900 (9%)
+
+        vm.prank(leadAgent);
+        vm.expectRevert(ISyndicateGovernor.LeadSplitTooLow.selector);
+        governor.propose(address(vault), "ipfs://test", 2000, 7 days, _simpleCalls(), 1, coProps);
+    }
+
+    function test_validation_leadSplitExactly10Percent() public {
+        // Two co-proposers taking 90% total → lead gets exactly 10% → should pass
+        ISyndicateGovernor.CoProposer[] memory coProps = new ISyndicateGovernor.CoProposer[](2);
+        coProps[0] = ISyndicateGovernor.CoProposer({agent: coAgent1, splitBps: 5000});
+        coProps[1] = ISyndicateGovernor.CoProposer({agent: coAgent2, splitBps: 4000}); // total 9000, lead = 1000 (10%)
+
+        vm.prank(leadAgent);
+        uint256 proposalId = governor.propose(address(vault), "ipfs://test", 2000, 7 days, _simpleCalls(), 1, coProps);
+        assertGt(proposalId, 0);
     }
 
     function test_validation_splitTooLow() public {

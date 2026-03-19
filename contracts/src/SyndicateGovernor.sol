@@ -660,8 +660,8 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
             totalCoSplitBps += splitBps;
         }
 
-        // Lead split = 10000 - totalCoSplitBps (must be > 0)
-        if (totalCoSplitBps >= 10000) revert InvalidSplits();
+        // Lead split = 10000 - totalCoSplitBps (must be >= 10%)
+        if (totalCoSplitBps > 9000) revert LeadSplitTooLow();
     }
 
     /// @dev Try pre-committed unwind calls first. If they revert, run fallback calls or bubble original error.
