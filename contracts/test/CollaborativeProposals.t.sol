@@ -775,7 +775,7 @@ contract CollaborativeProposalsTest is Test {
     function test_setMaxCoProposers_succeeds() public {
         vm.prank(owner);
         governor.setMaxCoProposers(3);
-        assertEq(governor.getMaxCoProposers(), 3);
+        assertEq(governor.getGovernorParams().maxCoProposers, 3);
     }
 
     function test_setMaxCoProposers_notOwner_reverts() public {

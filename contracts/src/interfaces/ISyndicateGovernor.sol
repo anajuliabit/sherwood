@@ -25,6 +25,10 @@ interface ISyndicateGovernor {
         uint256 quorumBps;
         uint256 maxPerformanceFeeBps;
         uint256 cooldownPeriod;
+        uint256 collaborationWindow;
+        uint256 maxCoProposers;
+        uint256 minStrategyDuration;
+        uint256 maxStrategyDuration;
     }
 
     struct StrategyProposal {
@@ -205,8 +209,4 @@ interface ISyndicateGovernor {
     function isRegisteredVault(address vault) external view returns (bool);
     function getCoProposers(uint256 proposalId) external view returns (CoProposer[] memory);
     function getCollaborationDeadline(uint256 proposalId) external view returns (uint256);
-    function getCollaborationWindow() external view returns (uint256);
-    function getMaxCoProposers() external view returns (uint256);
-    function getMinStrategyDuration() external view returns (uint256);
-    function getMaxStrategyDuration() external view returns (uint256);
 }

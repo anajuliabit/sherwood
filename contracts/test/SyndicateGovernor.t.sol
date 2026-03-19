@@ -182,8 +182,8 @@ contract SyndicateGovernorTest is Test {
         assertEq(params.quorumBps, QUORUM_BPS);
         assertEq(params.maxPerformanceFeeBps, MAX_PERF_FEE_BPS);
         assertEq(params.cooldownPeriod, COOLDOWN_PERIOD);
-        assertEq(governor.getMinStrategyDuration(), 1 days);
-        assertEq(governor.getMaxStrategyDuration(), 7 days);
+        assertEq(governor.getGovernorParams().minStrategyDuration, 1 days);
+        assertEq(governor.getGovernorParams().maxStrategyDuration, 7 days);
         assertEq(governor.proposalCount(), 0);
         assertTrue(governor.isRegisteredVault(address(vault)));
     }
@@ -799,14 +799,14 @@ contract SyndicateGovernorTest is Test {
         vm.prank(owner);
         governor.setMaxStrategyDuration(14 days);
 
-        assertEq(governor.getMaxStrategyDuration(), 14 days);
+        assertEq(governor.getGovernorParams().maxStrategyDuration, 14 days);
     }
 
     function test_setMinStrategyDuration() public {
         vm.prank(owner);
         governor.setMinStrategyDuration(2 hours);
 
-        assertEq(governor.getMinStrategyDuration(), 2 hours);
+        assertEq(governor.getGovernorParams().minStrategyDuration, 2 hours);
     }
 
     function test_setCooldownPeriod() public {

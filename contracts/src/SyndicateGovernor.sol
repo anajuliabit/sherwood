@@ -89,18 +89,6 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
     /// @notice Proposal ID → deadline for co-proposer consent
     mapping(uint256 => uint256) private _collaborationDeadline;
 
-    /// @notice Time window for co-proposer consent (seconds)
-    uint256 private _collaborationWindow;
-
-    /// @notice Max number of co-proposers per proposal
-    uint256 private _maxCoProposers;
-
-    /// @notice Min strategy duration proposers can choose
-    uint256 private _minStrategyDuration;
-
-    /// @notice Max strategy duration proposers can choose
-    uint256 private _maxStrategyDuration;
-
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -141,13 +129,12 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
             executionWindow: executionWindow_,
             quorumBps: quorumBps_,
             maxPerformanceFeeBps: maxPerformanceFeeBps_,
-            cooldownPeriod: cooldownPeriod_
+            cooldownPeriod: cooldownPeriod_,
+            collaborationWindow: collaborationWindow_,
+            maxCoProposers: maxCoProposers_,
+            minStrategyDuration: minStrategyDuration_,
+            maxStrategyDuration: maxStrategyDuration_
         });
-
-        _collaborationWindow = collaborationWindow_;
-        _maxCoProposers = maxCoProposers_;
-        _minStrategyDuration = minStrategyDuration_;
-        _maxStrategyDuration = maxStrategyDuration_;
     }
 
     // ==================== PROPOSAL LIFECYCLE ====================
@@ -165,8 +152,8 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
         if (!_registeredVaults.contains(vault)) revert VaultNotRegistered();
         if (!ISyndicateVault(vault).isAgent(msg.sender)) revert NotRegisteredAgent();
         if (performanceFeeBps > _params.maxPerformanceFeeBps) revert PerformanceFeeTooHigh();
-        if (strategyDuration > _maxStrategyDuration) revert StrategyDurationTooLong();
-        if (strategyDuration < _minStrategyDuration) revert StrategyDurationTooShort();
+        if (strategyDuration > _params.maxStrategyDuration) revert StrategyDurationTooLong();
+        if (strategyDuration < _params.minStrategyDuration) revert StrategyDurationTooShort();
         if (calls.length == 0) revert EmptyCalls();
         if (splitIndex == 0 || splitIndex >= calls.length) revert InvalidSplitIndex();
 
@@ -470,21 +457,27 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
 
     /// @inheritdoc ISyndicateGovernor
     function setMinStrategyDuration(uint256 newMinStrategyDuration) external onlyOwner {
-        if (newMinStrategyDuration < ABSOLUTE_MIN_STRATEGY_DURATION || newMinStrategyDuration > _maxStrategyDuration) {
+        if (
+            newMinStrategyDuration < ABSOLUTE_MIN_STRATEGY_DURATION
+                || newMinStrategyDuration > _params.maxStrategyDuration
+        ) {
             revert InvalidStrategyDurationBounds();
         }
-        uint256 old = _minStrategyDuration;
-        _minStrategyDuration = newMinStrategyDuration;
+        uint256 old = _params.minStrategyDuration;
+        _params.minStrategyDuration = newMinStrategyDuration;
         emit MinStrategyDurationUpdated(old, newMinStrategyDuration);
     }
 
     /// @inheritdoc ISyndicateGovernor
     function setMaxStrategyDuration(uint256 newMaxStrategyDuration) external onlyOwner {
-        if (newMaxStrategyDuration > ABSOLUTE_MAX_STRATEGY_DURATION || newMaxStrategyDuration < _minStrategyDuration) {
+        if (
+            newMaxStrategyDuration > ABSOLUTE_MAX_STRATEGY_DURATION
+                || newMaxStrategyDuration < _params.minStrategyDuration
+        ) {
             revert InvalidStrategyDurationBounds();
         }
-        uint256 old = _maxStrategyDuration;
-        _maxStrategyDuration = newMaxStrategyDuration;
+        uint256 old = _params.maxStrategyDuration;
+        _params.maxStrategyDuration = newMaxStrategyDuration;
         emit MaxStrategyDurationUpdated(old, newMaxStrategyDuration);
     }
 
@@ -501,8 +494,8 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
         if (newCollaborationWindow < MIN_COLLABORATION_WINDOW || newCollaborationWindow > MAX_COLLABORATION_WINDOW) {
             revert InvalidCollaborationWindow();
         }
-        uint256 old = _collaborationWindow;
-        _collaborationWindow = newCollaborationWindow;
+        uint256 old = _params.collaborationWindow;
+        _params.collaborationWindow = newCollaborationWindow;
         emit CollaborationWindowUpdated(old, newCollaborationWindow);
     }
 
@@ -511,8 +504,8 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
         if (newMaxCoProposers == 0 || newMaxCoProposers > ABSOLUTE_MAX_CO_PROPOSERS) {
             revert InvalidMaxCoProposers();
         }
-        uint256 old = _maxCoProposers;
-        _maxCoProposers = newMaxCoProposers;
+        uint256 old = _params.maxCoProposers;
+        _params.maxCoProposers = newMaxCoProposers;
         emit MaxCoProposersUpdated(old, newMaxCoProposers);
     }
 
@@ -590,26 +583,6 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
         return _collaborationDeadline[proposalId];
     }
 
-    /// @inheritdoc ISyndicateGovernor
-    function getCollaborationWindow() external view returns (uint256) {
-        return _collaborationWindow;
-    }
-
-    /// @inheritdoc ISyndicateGovernor
-    function getMaxCoProposers() external view returns (uint256) {
-        return _maxCoProposers;
-    }
-
-    /// @inheritdoc ISyndicateGovernor
-    function getMinStrategyDuration() external view returns (uint256) {
-        return _minStrategyDuration;
-    }
-
-    /// @inheritdoc ISyndicateGovernor
-    function getMaxStrategyDuration() external view returns (uint256) {
-        return _maxStrategyDuration;
-    }
-
     // ==================== INTERNAL ====================
 
     /// @dev Store proposal calls separately for gas efficiency
@@ -648,7 +621,7 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
         for (uint256 i = 0; i < coProposers.length; i++) {
             _coProposers[proposalId].push(coProposers[i]);
         }
-        _collaborationDeadline[proposalId] = block.timestamp + _collaborationWindow;
+        _collaborationDeadline[proposalId] = block.timestamp + _params.collaborationWindow;
 
         address[] memory coAddrs = new address[](coProposers.length);
         uint256[] memory splits = new uint256[](coProposers.length);
@@ -661,7 +634,7 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
 
     /// @dev Validate co-proposer array: registered agents, no duplicates, valid splits
     function _validateCoProposers(address vault, CoProposer[] calldata coProposers) internal view {
-        if (coProposers.length > _maxCoProposers) revert TooManyCoProposers();
+        if (coProposers.length > _params.maxCoProposers) revert TooManyCoProposers();
 
         uint256 totalCoSplitBps = 0;
         for (uint256 i = 0; i < coProposers.length; i++) {
