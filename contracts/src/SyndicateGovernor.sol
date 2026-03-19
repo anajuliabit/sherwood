@@ -98,6 +98,9 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
     uint256 private constant _NOT_ENTERED = 1;
     uint256 private constant _ENTERED = 2;
 
+    /// @dev Reserved storage for future upgrades. Decrease by 1 for each new slot added.
+    uint256[40] private __gap;
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();

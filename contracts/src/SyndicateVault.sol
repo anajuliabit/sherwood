@@ -82,6 +82,9 @@ contract SyndicateVault is
     /// @notice Vault owner's management fee on strategy profits (basis points, set at init)
     uint256 private _managementFeeBps;
 
+    /// @dev Reserved storage for future upgrades. Decrease by 1 for each new slot added.
+    uint256[40] private __gap;
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
