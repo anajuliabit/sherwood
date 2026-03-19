@@ -362,11 +362,15 @@ contract SyndicateGovernor is ISyndicateGovernor, Initializable, OwnableUpgradea
     /// @inheritdoc ISyndicateGovernor
     function approveCollaboration(uint256 proposalId) external {
         StrategyProposal storage proposal = _proposals[proposalId];
+        ProposalState storedState = proposal.state;
         ProposalState state = _resolveState(proposal);
-        if (state == ProposalState.Expired && block.timestamp > collaborationDeadline[proposalId]) {
-            revert CollaborationExpired();
+        // Give a specific error for expired collaboration windows
+        if (state != ProposalState.Draft) {
+            if (storedState == ProposalState.Draft && block.timestamp > collaborationDeadline[proposalId]) {
+                revert CollaborationExpired();
+            }
+            revert NotDraftState();
         }
-        if (state != ProposalState.Draft) revert NotDraftState();
 
         _requireCoProposer(proposalId);
         if (coProposerApprovals[proposalId][msg.sender]) revert AlreadyApproved();
