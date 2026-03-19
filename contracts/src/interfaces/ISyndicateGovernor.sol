@@ -95,8 +95,6 @@ interface ISyndicateGovernor {
     error NotDraftState();
     error InvalidCollaborationWindow();
     error InvalidMaxCoProposers();
-    error InvalidMinSplitBps();
-    error InvalidMinLeadSplitBps();
 
     // ── Events ──
 
@@ -145,8 +143,6 @@ interface ISyndicateGovernor {
     event CollaborationDeadlineExpired(uint256 indexed proposalId);
     event CollaborationWindowUpdated(uint256 oldValue, uint256 newValue);
     event MaxCoProposersUpdated(uint256 oldValue, uint256 newValue);
-    event MinSplitBpsUpdated(uint256 oldValue, uint256 newValue);
-    event MinLeadSplitBpsUpdated(uint256 oldValue, uint256 newValue);
 
     // ── Functions ──
 
@@ -192,8 +188,6 @@ interface ISyndicateGovernor {
     function setCooldownPeriod(uint256 newCooldownPeriod) external;
     function setCollaborationWindow(uint256 newCollaborationWindow) external;
     function setMaxCoProposers(uint256 newMaxCoProposers) external;
-    function setMinSplitBps(uint256 newMinSplitBps) external;
-    function setMinLeadSplitBps(uint256 newMinLeadSplitBps) external;
 
     // ── Views ──
 
@@ -213,6 +207,4 @@ interface ISyndicateGovernor {
     function getCollaborationDeadline(uint256 proposalId) external view returns (uint256);
     function getCollaborationWindow() external view returns (uint256);
     function getMaxCoProposers() external view returns (uint256);
-    function getMinSplitBps() external view returns (uint256);
-    function getMinLeadSplitBps() external view returns (uint256);
 }
