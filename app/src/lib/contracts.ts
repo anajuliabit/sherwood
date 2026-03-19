@@ -511,9 +511,32 @@ export const SYNDICATE_GOVERNOR_ABI = [
     stateMutability: "nonpayable",
     inputs: [
       { name: "proposalId", type: "uint256" },
-      { name: "support", type: "bool" },
+      { name: "support", type: "uint8" },
     ],
     outputs: [],
+  },
+  {
+    name: "getCoProposers",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "proposalId", type: "uint256" }],
+    outputs: [
+      {
+        name: "",
+        type: "tuple[]",
+        components: [
+          { name: "agent", type: "address" },
+          { name: "splitBps", type: "uint256" },
+        ],
+      },
+    ],
+  },
+  {
+    name: "isRegisteredVault",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "vault", type: "address" }],
+    outputs: [{ name: "", type: "bool" }],
   },
 ] as const;
 
