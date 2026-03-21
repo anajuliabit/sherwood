@@ -79,9 +79,9 @@ const ZERO_BYTES32 =
   "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`;
 
 const BASE_ADDRESSES: ChainAddresses = {
-  factory: ZERO, // TODO: set after mainnet deploy
+  factory: "0x8776F4C9b181C3AC14eB3271B69D297627d79cee",
   usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-  l2Registry: ZERO,
+  l2Registry: "0x7a019ce699e27b0ad1e5b51344a58116b9f3b9b1",
   identityRegistry: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
   eas: "0x4200000000000000000000000000000000000021",
   schemaRegistry: "0x4200000000000000000000000000000000000020",
@@ -146,7 +146,7 @@ export const CHAINS: Record<number, ChainEntry> = {
     addresses: ROBINHOOD_TESTNET_ADDRESSES,
     subgraphUrl: null,
   },
-  // 8453: { chain: base, addresses: BASE_ADDRESSES, subgraphUrl: null }, // uncomment after mainnet deploy
+  8453: { chain: base, addresses: BASE_ADDRESSES, subgraphUrl: null },
 };
 
 // ── Public clients (one per chain, server-side) ──────────
@@ -412,7 +412,6 @@ export const SYNDICATE_GOVERNOR_ABI = [
           { name: "vault", type: "address" },
           { name: "metadataURI", type: "string" },
           { name: "performanceFeeBps", type: "uint256" },
-          { name: "splitIndex", type: "uint256" },
           { name: "strategyDuration", type: "uint256" },
           { name: "votesFor", type: "uint256" },
           { name: "votesAgainst", type: "uint256" },
@@ -452,7 +451,7 @@ export const SYNDICATE_GOVERNOR_ABI = [
         components: [
           { name: "votingPeriod", type: "uint256" },
           { name: "executionWindow", type: "uint256" },
-          { name: "quorumBps", type: "uint256" },
+          { name: "vetoThresholdBps", type: "uint256" },
           { name: "maxPerformanceFeeBps", type: "uint256" },
           { name: "cooldownPeriod", type: "uint256" },
           { name: "collaborationWindow", type: "uint256" },

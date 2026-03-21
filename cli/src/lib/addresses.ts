@@ -117,8 +117,8 @@ const ROBINHOOD_TESTNET_INFRA = {
 // ── ENS / Durin ──
 
 const BASE_ENS = {
-  L2_REGISTRAR: ZERO, // TODO: set after mainnet deploy
-  L2_REGISTRY: ZERO, // TODO: set after mainnet deploy
+  L2_REGISTRAR: "0x866996c808E6244216a3d0df15464FCF5d495394" as Address,
+  L2_REGISTRY: "0x7a019ce699e27b0ad1e5b51344a58116b9f3b9b1" as Address,
 } as const;
 
 const BASE_SEPOLIA_ENS = {
@@ -153,8 +153,8 @@ const ROBINHOOD_TESTNET_AGENT_REGISTRY = {
 // ── Sherwood Protocol (our deployed contracts) ──
 
 const BASE_SHERWOOD = {
-  FACTORY: ZERO, // TODO: set after mainnet deploy
-  GOVERNOR: ZERO, // TODO: set after mainnet deploy
+  FACTORY: "0x8776F4C9b181C3AC14eB3271B69D297627d79cee" as Address,
+  GOVERNOR: "0x4eC24F423c79cc94624c6f555071FF49989910bD" as Address,
 } as const;
 
 const BASE_SEPOLIA_SHERWOOD = {

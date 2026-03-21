@@ -8,6 +8,9 @@ These are also available in `cli/src/lib/addresses.ts` (resolved at runtime base
 
 | Contract | Address |
 |----------|---------|
+| SyndicateFactory | `0x8776F4C9b181C3AC14eB3271B69D297627d79cee` |
+| SyndicateGovernor | `0x4eC24F423c79cc94624c6f555071FF49989910bD` |
+| BatchExecutorLib | `0xC6744E4941f4810fDadB72c795aD3EE7cb55D925` |
 | USDC | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` (6 decimals) |
 | WETH | `0x4200000000000000000000000000000000000006` |
 | Moonwell Comptroller | `0xfBb21d0380beE3312B33c4353c8936a0F13EF26C` |
