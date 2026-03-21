@@ -131,7 +131,7 @@ export default function ProposalCard({
               FOR {forPct.toFixed(1)}%
             </span>
             <span>
-              {formatShares(totalVotes, assetDecimals * 2)} shares voted · Veto Threshold: {formatBps(params.vetoThresholdBps)}
+              {formatShares(totalVotes, assetDecimals)} shares voted · Veto Threshold: {formatBps(params.vetoThresholdBps)}
             </span>
             <span style={{ color: "#ff4d4d" }}>
               {againstPct.toFixed(1)}% AGAINST

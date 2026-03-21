@@ -60,8 +60,8 @@ export default function VaultOverview({
           <span className="param-key">Total Shares</span>
           <span className="param-val">
             {/* Vault share decimals = asset.decimals() + _decimalsOffset()
-                where _decimalsOffset() = asset.decimals() (ERC-4626 inflation protection) */}
-            {formatShares(totalSupply, assetDecimals * 2)}
+                where _decimalsOffset() = 0 (OZ default, no override in SyndicateVault) */}
+            {formatShares(totalSupply, assetDecimals)}
           </span>
         </div>
       </div>
