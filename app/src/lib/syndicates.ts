@@ -15,9 +15,7 @@ import {
   ERC20_ABI,
   formatAsset,
 } from "./contracts";
-
-const PINATA_GATEWAY =
-  process.env.PINATA_GATEWAY || "https://sherwood.mypinata.cloud";
+import { fetchMetadata } from "./syndicate-data";
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -31,21 +29,16 @@ interface SubgraphSyndicate {
   active: boolean;
   totalDeposits: string;
   totalWithdrawals: string;
-  agents: { id: string; active: boolean }[];
+  agents: { id: string; agentAddress: string; agentId: string; active: boolean }[];
+  proposals: { proposer: string; finalPnl: string | null; state: string }[];
 }
 
-interface SyndicateMetadata {
-  name: string;
-  description: string;
-  strategies: {
-    id: string;
-    name: string;
-    protocols: string[];
-    riskLevel: string;
-  }[];
-  terms: {
-    ragequitEnabled: boolean;
-  };
+export interface AgentDisplay {
+  agentAddress: string;
+  agentId: string;
+  proposalCount: number;
+  totalPnl: string; // formatted P&L string
+  totalPnlRaw: number; // raw number for sorting
 }
 
 export interface SyndicateDisplay {
@@ -56,6 +49,7 @@ export interface SyndicateDisplay {
   strategy: string;
   tvl: string;
   agentCount: number;
+  agents: AgentDisplay[];
   status: "EXECUTING" | "IDLE" | "NO_AGENTS";
   chainId: number;
 }
@@ -88,32 +82,6 @@ async function querySubgraph<T>(
   }
 }
 
-// ── IPFS Metadata ──────────────────────────────────────────
-
-async function fetchMetadata(
-  ipfsURI: string,
-): Promise<SyndicateMetadata | null> {
-  try {
-    let cid: string;
-    if (ipfsURI.startsWith("ipfs://")) {
-      cid = ipfsURI.slice(7);
-    } else if (ipfsURI.startsWith("Qm") || ipfsURI.startsWith("bafy")) {
-      cid = ipfsURI;
-    } else {
-      return null;
-    }
-
-    const response = await fetch(`${PINATA_GATEWAY}/ipfs/${cid}`, {
-      next: { revalidate: 300 },
-    });
-
-    if (!response.ok) return null;
-    return (await response.json()) as SyndicateMetadata;
-  } catch {
-    return null;
-  }
-}
-
 // ── Per-chain fetchers ────────────────────────────────────
 
 async function fetchViaSubgraph(
@@ -140,7 +108,14 @@ async function fetchViaSubgraph(
         totalWithdrawals
         agents(where: { active: true }) {
           id
+          agentAddress
+          agentId
           active
+        }
+        proposals(where: { state: "Settled" }) {
+          proposer
+          finalPnl
+          state
         }
       }
     }`,
@@ -148,13 +123,64 @@ async function fetchViaSubgraph(
 
   if (!data?.syndicates?.length) return [];
 
+  const client = getPublicClient(chainId);
+
+  // Multicall totalAssets + asset for each vault to get real TVL
+  const vaultCalls = data.syndicates.flatMap((s) => [
+    {
+      address: s.vault as Address,
+      abi: SYNDICATE_VAULT_ABI,
+      functionName: "totalAssets" as const,
+    },
+    {
+      address: s.vault as Address,
+      abi: SYNDICATE_VAULT_ABI,
+      functionName: "asset" as const,
+    },
+  ]);
+
+  const vaultResults = await client.multicall({ contracts: vaultCalls });
+
+  // Collect unique asset addresses for decimals + symbol lookup
+  const assetAddresses = new Set<Address>();
+  for (let i = 0; i < data.syndicates.length; i++) {
+    const assetResult = vaultResults[i * 2 + 1];
+    if (assetResult.status === "success" && assetResult.result) {
+      assetAddresses.add(assetResult.result as Address);
+    }
+  }
+
+  const assetList = [...assetAddresses];
+  const assetInfoCalls = assetList.flatMap((addr) => [
+    { address: addr, abi: ERC20_ABI, functionName: "decimals" as const },
+    { address: addr, abi: ERC20_ABI, functionName: "symbol" as const },
+  ]);
+
+  const assetInfoResults =
+    assetList.length > 0
+      ? await client.multicall({ contracts: assetInfoCalls })
+      : [];
+
+  const assetInfo: Record<string, { decimals: number; symbol: string }> = {};
+  for (let i = 0; i < assetList.length; i++) {
+    const decimals = assetInfoResults[i * 2]?.result as number | undefined;
+    const symbol = assetInfoResults[i * 2 + 1]?.result as string | undefined;
+    assetInfo[assetList[i].toLowerCase()] = {
+      decimals: decimals ?? 18,
+      symbol: symbol ?? "ETH",
+    };
+  }
+
   return Promise.all(
-    data.syndicates.map(async (s) => {
+    data.syndicates.map(async (s, i) => {
       const metadata = await fetchMetadata(s.metadataURI);
 
-      const totalDeposits = parseFloat(s.totalDeposits) || 0;
-      const totalWithdrawals = parseFloat(s.totalWithdrawals) || 0;
-      const tvl = totalDeposits - totalWithdrawals;
+      const totalAssets = (vaultResults[i * 2]?.result as bigint) ?? 0n;
+      const assetAddr = (vaultResults[i * 2 + 1]?.result as Address) ?? "";
+      const info = assetInfo[assetAddr.toLowerCase()] ?? {
+        decimals: 18,
+        symbol: "ETH",
+      };
       const agentCount = s.agents?.length || 0;
 
       const strategy =
@@ -164,7 +190,25 @@ async function fetchViaSubgraph(
 
       let status: SyndicateDisplay["status"] = "NO_AGENTS";
       if (agentCount > 0) {
-        status = tvl > 0 ? "EXECUTING" : "IDLE";
+        status = totalAssets > 0n ? "EXECUTING" : "IDLE";
+      }
+
+      const tvlFormatted = formatAsset(
+        totalAssets,
+        info.decimals,
+        info.symbol === "USDC" ? "USD" : undefined,
+      );
+
+      // Aggregate P&L per agent from settled proposals
+      const isUSD = info.symbol === "USDC" || info.symbol === "USDT";
+      const agentPnl: Record<string, { count: number; pnl: bigint }> = {};
+      for (const p of s.proposals || []) {
+        const key = p.proposer.toLowerCase();
+        if (!agentPnl[key]) agentPnl[key] = { count: 0, pnl: 0n };
+        agentPnl[key].count++;
+        if (p.finalPnl != null) {
+          agentPnl[key].pnl += BigInt(p.finalPnl);
+        }
       }
 
       return {
@@ -173,8 +217,22 @@ async function fetchViaSubgraph(
         subdomain: s.subdomain,
         name: metadata?.name || `Syndicate #${s.id}`,
         strategy,
-        tvl: `$${tvl.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
+        tvl: info.symbol === "USDC" ? tvlFormatted : `${tvlFormatted} ${info.symbol}`,
         agentCount,
+        agents: (s.agents || []).map((a) => {
+          const stats = agentPnl[a.agentAddress.toLowerCase()] ?? { count: 0, pnl: 0n };
+          const pnlAbs = stats.pnl < 0n ? -stats.pnl : stats.pnl;
+          const pnlFormatted = formatAsset(pnlAbs, info.decimals, isUSD ? "USD" : undefined);
+          const sign = stats.pnl > 0n ? "+" : stats.pnl < 0n ? "-" : "";
+          const pnlDisplay = isUSD ? `${sign}${pnlFormatted}` : `${sign}${pnlFormatted} ${info.symbol}`;
+          return {
+            agentAddress: a.agentAddress,
+            agentId: a.agentId,
+            proposalCount: stats.count,
+            totalPnl: stats.count > 0 ? pnlDisplay : "—",
+            totalPnlRaw: Number(stats.pnl) / 10 ** info.decimals,
+          };
+        }),
         status,
         chainId,
       };
@@ -211,7 +269,7 @@ async function fetchViaOnChain(
 
   if (!rawSyndicates.length) return [];
 
-  // For each syndicate, multicall vault data: totalAssets, getAgentCount, asset
+  // For each syndicate, multicall vault data: totalAssets, getAgentCount, asset, getAgentAddresses
   const vaultCalls = rawSyndicates.flatMap((s) => [
     {
       address: s.vault,
@@ -228,6 +286,11 @@ async function fetchViaOnChain(
       abi: SYNDICATE_VAULT_ABI,
       functionName: "asset" as const,
     },
+    {
+      address: s.vault,
+      abi: SYNDICATE_VAULT_ABI,
+      functionName: "getAgentAddresses" as const,
+    },
   ]);
 
   const vaultResults = await client.multicall({ contracts: vaultCalls });
@@ -235,7 +298,7 @@ async function fetchViaOnChain(
   // Collect unique asset addresses for decimals + symbol lookup
   const assetAddresses = new Set<Address>();
   for (let i = 0; i < rawSyndicates.length; i++) {
-    const assetResult = vaultResults[i * 3 + 2];
+    const assetResult = vaultResults[i * 4 + 2];
     if (assetResult.status === "success" && assetResult.result) {
       assetAddresses.add(assetResult.result as Address);
     }
@@ -263,14 +326,59 @@ async function fetchViaOnChain(
     };
   }
 
+  // Batch-fetch agentConfig for all agents across all syndicates
+  const allAgentCalls: { vault: Address; agentAddress: Address }[] = [];
+  for (let i = 0; i < rawSyndicates.length; i++) {
+    const agentAddresses = (vaultResults[i * 4 + 3]?.result as Address[]) ?? [];
+    for (const addr of agentAddresses) {
+      allAgentCalls.push({ vault: rawSyndicates[i].vault, agentAddress: addr });
+    }
+  }
+
+  const agentConfigResults =
+    allAgentCalls.length > 0
+      ? await client.multicall({
+          contracts: allAgentCalls.map((c) => ({
+            address: c.vault,
+            abi: SYNDICATE_VAULT_ABI,
+            functionName: "getAgentConfig" as const,
+            args: [c.agentAddress],
+          })),
+        })
+      : [];
+
+  // Index agent configs by vault address
+  const agentsByVault: Record<string, AgentDisplay[]> = {};
+  let configIdx = 0;
+  for (let i = 0; i < rawSyndicates.length; i++) {
+    const agentAddresses = (vaultResults[i * 4 + 3]?.result as Address[]) ?? [];
+    const vaultKey = rawSyndicates[i].vault.toLowerCase();
+    agentsByVault[vaultKey] = [];
+    for (const addr of agentAddresses) {
+      const r = agentConfigResults[configIdx++];
+      const cfg = r?.status === "success"
+        ? (r.result as { agentId: bigint; agentAddress: Address; active: boolean })
+        : null;
+      if (cfg?.active) {
+        agentsByVault[vaultKey].push({
+          agentAddress: addr,
+          agentId: cfg.agentId.toString(),
+          proposalCount: 0,
+          totalPnl: "—",
+          totalPnlRaw: 0,
+        });
+      }
+    }
+  }
+
   // Build display objects
   return Promise.all(
     rawSyndicates.map(async (s, i) => {
-      const totalAssets = (vaultResults[i * 3]?.result as bigint) ?? 0n;
+      const totalAssets = (vaultResults[i * 4]?.result as bigint) ?? 0n;
       const agentCount = Number(
-        (vaultResults[i * 3 + 1]?.result as bigint) ?? 0n,
+        (vaultResults[i * 4 + 1]?.result as bigint) ?? 0n,
       );
-      const assetAddr = (vaultResults[i * 3 + 2]?.result as Address) ?? "";
+      const assetAddr = (vaultResults[i * 4 + 2]?.result as Address) ?? "";
       const info = assetInfo[assetAddr.toLowerCase()] ?? {
         decimals: 18,
         symbol: "ETH",
@@ -302,6 +410,7 @@ async function fetchViaOnChain(
         strategy,
         tvl: info.symbol === "USDC" ? tvlFormatted : `${tvlFormatted} ${info.symbol}`,
         agentCount,
+        agents: agentsByVault[s.vault.toLowerCase()] ?? [],
         status,
         chainId,
       };

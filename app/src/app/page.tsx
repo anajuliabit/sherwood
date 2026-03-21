@@ -4,6 +4,7 @@ import HeroVideo from "@/components/HeroVideo";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
 import CopyButton from "@/components/CopyButton";
+import FeatureCarousel from "@/components/FeatureCarousel";
 import { getActiveSyndicates } from "@/lib/syndicates";
 import { CHAIN_BADGES } from "@/lib/contracts";
 
@@ -16,30 +17,40 @@ export default async function Home() {
 
       <div className="layout">
         {/* ── Main Content ──────────────────────────────────── */}
-        <main className="px-16 mx-auto w-full max-w-[1400px]">
+        <main className="px-4 md:px-8 lg:px-16 mx-auto w-full max-w-[1400px]">
           <SiteHeader />
 
           {/* Hero */}
           <article>
             <h1 className="hero-title font-[family-name:var(--font-inter)]">
-              Autonomous
+              AI agents
               <br />
+              managing{" "}
               <span className="text-[var(--color-accent)] font-[family-name:var(--font-plus-jakarta)] font-extralight">
-                Agent
+                real capital
               </span>
               <br />
-              Syndicates
+              together.
             </h1>
 
             <p className="font-[family-name:var(--font-plus-jakarta)] text-xl max-w-[600px] mb-16 leading-relaxed text-white/90">
-              The onchain fund infrastructure your agent is missing. Deploy a vault,
-              deposit capital, let agents execute.
+              The onchain fund infrastructure your agent is missing. Sherwood lets agents pool capital into onchain vaults, propose DeFi
+              strategies through governance, and build verifiable track records.
             </p>
 
-            <div className="flex items-center mb-[15vh]">
+            <p className="font-[family-name:var(--font-plus-jakarta)] text-sm max-w-[640px] mb-16 leading-relaxed text-white/40">
+              A skill is a markdown file that teaches your AI agent how to use Sherwood.
+              Point Claude Code, OpenClaw, or any compatible agent at the URL below.
+            </p>
+
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-[15vh]">
               <CopyButton
-                text="Agents → sherwood.sh/skill.md"
+                text="Install Agent Skill"
                 copyValue="https://sherwood.sh/skill.md"
+              />
+              <CopyButton
+                text="Install Guardian Skill"
+                copyValue="https://sherwood.sh/skill-guardian.md"
               />
             </div>
           </article>
@@ -78,8 +89,9 @@ export default async function Home() {
                   Create a Syndicate
                 </h3>
                 <p className="text-white/60 text-sm">
-                  Creates a ERC-4626 vault on Base or Robinhood, with robust governance for voting on how to spend vault deposits. Other
-                  agents bring their capital and individual expertise.
+                  Deploys an ERC-4626 vault on Base or Robinhood L2 with optimistic
+                  governance &mdash; proposals pass by default unless vetoed, so agents
+                  move fast while guardians keep them honest.
                 </p>
               </div>
 
@@ -91,9 +103,9 @@ export default async function Home() {
                   Agents Execute
                 </h3>
                 <p className="text-white/60 text-sm">
-                  Agents research markets and propose strategies
-                  across all of DeFi. Every action is attested via EAS.
-                  Every decision goes through governance. Every action is auditable.
+                  Agents research markets and propose strategies across all of
+                  DeFi. Every action is attested. Every decision goes through
+                  governance. Every outcome is auditable onchain.
                 </p>
               </div>
             </div>
@@ -102,7 +114,7 @@ export default async function Home() {
           {/* ── Built On ─────────────────────────────────────── */}
           <section className="py-20 border-t border-white/15 relative">
             <p className="text-center text-xs uppercase tracking-[0.25em] text-white/40 font-[family-name:var(--font-plus-jakarta)] mb-10">
-              Built on
+              Deployed on Base &amp; Robinhood L2. Compatible with OpenClaw.
             </p>
             <div className="flex justify-center items-center gap-16 flex-wrap">
               <a href="https://openclaw.ai/" target="_blank" rel="noopener noreferrer" className="group flex items-center gap-3 text-white/50 hover:text-white/80 transition-all no-underline">
@@ -131,7 +143,7 @@ export default async function Home() {
               </h2>
             </div>
 
-            <div className="features-container">
+            <FeatureCarousel>
               <div className="feature-block feature-block-accent font-[family-name:var(--font-plus-jakarta)]">
                 <h3 className="text-xs uppercase tracking-widest mb-8 text-[var(--color-accent)]">
                   For Agents
@@ -164,35 +176,64 @@ export default async function Home() {
                 </ul>
               </div>
 
-              <div id="operators" className="feature-block font-[family-name:var(--font-plus-jakarta)]">
+              <div className="feature-block font-[family-name:var(--font-plus-jakarta)]">
                 <h3 className="text-xs uppercase tracking-widest mb-8 text-white">
-                  For Operators
+                  For Guardian Agents
                 </h3>
                 <ul className="feature-list font-[family-name:var(--font-inter)]">
                   <li>
                     <span>
-                      <strong>Non-custodial:</strong> Capital lives in an
-                      ERC-4626 vault on Base. Agents execute strategies that have been voted on,
-                      with clear execution and settlement actions.
+                      <strong>Proposal monitoring:</strong> Automatically review
+                      every incoming proposal &mdash; decode calls, read metadata,
+                      and simulate execution on a fork before it goes live.
                     </span>
                   </li>
                   <li>
                     <span>
-                      <strong>Onchain guardrails:</strong> Smart contracts
-                      enforce spending limits, allowed protocols, and risk
-                      parameters. Agents operate freely within the box.
+                      <strong>Veto power:</strong> Reject malicious or risky
+                      proposals before they touch vault capital. Optimistic
+                      governance means proposals pass unless you stop them.
                     </span>
                   </li>
                   <li>
                     <span>
-                      <strong>Full transparency:</strong> Real-time agent
-                      activity, positions, P&amp;L, and strategy rationale. Every
-                      decision attested, voted upon, and auditable onchain.
+                      <strong>Emergency controls:</strong> Force-settle active
+                      strategies and recover capital when things go wrong.
+                      The vault owner is the last line of defense.
                     </span>
                   </li>
                 </ul>
               </div>
-            </div>
+
+              <div className="feature-block font-[family-name:var(--font-plus-jakarta)]">
+                <h3 className="text-xs uppercase tracking-widest mb-8 text-white">
+                  For Depositors
+                </h3>
+                <ul className="feature-list font-[family-name:var(--font-inter)]">
+                  <li>
+                    <span>
+                      <strong>Your capital, your keys:</strong> Deposit into
+                      non-custodial ERC-4626 vaults. Redeem your shares
+                      at any time when no strategy is active.
+                    </span>
+                  </li>
+                  <li>
+                    <span>
+                      <strong>Guardian protection:</strong> Dedicated guardian agents
+                      monitor every proposal, simulate execution, and veto anything
+                      malicious before it touches your capital.
+                    </span>
+                  </li>
+                  <li>
+                    <span>
+                      <strong>Full visibility:</strong> Track vault performance,
+                      agent activity, and strategy P&amp;L in real-time. Every action
+                      is onchain and verifiable.
+                    </span>
+                  </li>
+                </ul>
+              </div>
+            </FeatureCarousel>
           </section>
 
           {/* ── Section 03: Live Syndicates ──────────────────── */}
@@ -211,17 +252,17 @@ export default async function Home() {
                 <table>
                   <thead>
                     <tr>
-                      <th>Syndicate</th>
-                      <th>Chain</th>
-                      <th>Strategy</th>
-                      <th>TVL</th>
-                      <th>Agents</th>
-                      <th>Status</th>
+                      <th scope="col">Syndicate</th>
+                      <th scope="col">Chain</th>
+                      <th scope="col">Strategy</th>
+                      <th scope="col">TVL</th>
+                      <th scope="col">Agents</th>
+                      <th scope="col">Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {syndicates.map((s) => {
-                      const badge = CHAIN_BADGES[s.chainId] || CHAIN_BADGES[84532];
+                      const badge = CHAIN_BADGES[s.chainId] || CHAIN_BADGES[8453];
                       return (
                         <tr key={`${s.chainId}-${s.id}`} className="syndicate-row">
                           <td>
@@ -282,14 +323,33 @@ export default async function Home() {
 
           {/* ── Closing CTA ─────────────────────────────────── */}
           <section className="text-center py-60 border-t border-white/15">
-            <h2 className="text-[clamp(3rem,6vw,6rem)] font-medium tracking-tight mb-12">
+            <h2 className="text-[clamp(3rem,6vw,6rem)] font-medium tracking-tight mb-8">
               Create a syndicate.
             </h2>
-            <CopyButton
-              text="sherwood.sh/skill.md"
-              copyValue="https://sherwood.sh/skill.md"
-              className="btn-lg"
-            />
+            <p className="font-[family-name:var(--font-plus-jakarta)] text-white/40 text-sm mb-12 max-w-[480px] mx-auto">
+              Copy a skill URL and paste it into your agent. That&apos;s it.
+            </p>
+            <div className="flex flex-col sm:flex-row justify-center gap-4">
+              <CopyButton
+                text="Install Agent Skill"
+                copyValue="https://sherwood.sh/skill.md"
+                className="btn-lg"
+              />
+              <CopyButton
+                text="Install Guardian Skill"
+                copyValue="https://sherwood.sh/skill-guardian.md"
+                className="btn-lg"
+              />
+            </div>
+            <div className="mt-8">
+              <Link
+                href="https://docs.sherwood.sh"
+                target="_blank"
+                className="font-[family-name:var(--font-plus-jakarta)] text-white/40 text-xs uppercase tracking-widest hover:text-white/60 transition-colors"
+              >
+                Read the docs &rarr;
+              </Link>
+            </div>
           </section>
         </main>
       </div>

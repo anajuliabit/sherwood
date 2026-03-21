@@ -20,6 +20,9 @@ interface DepositModalProps {
   vaultName: string;
   openDeposits: boolean;
   paused: boolean;
+  assetAddress: Address;
+  assetDecimals: number;
+  assetSymbol: string;
   onClose: () => void;
 }
 
@@ -30,19 +33,21 @@ export default function DepositModal({
   vaultName,
   openDeposits,
   paused,
+  assetAddress,
+  assetDecimals,
+  assetSymbol,
   onClose,
 }: DepositModalProps) {
   const { address } = useAccount();
   const addresses = getAddresses();
-  const usdc = addresses.usdc;
 
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState<Step>("input");
   const [errorMsg, setErrorMsg] = useState("");
 
-  // Read USDC balance
-  const { data: usdcBalance } = useReadContract({
-    address: usdc,
+  // Read asset balance
+  const { data: assetBalance } = useReadContract({
+    address: assetAddress,
     abi: ERC20_ABI,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
@@ -51,7 +56,7 @@ export default function DepositModal({
 
   // Read current allowance
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
-    address: usdc,
+    address: assetAddress,
     abi: ERC20_ABI,
     functionName: "allowance",
     args: address ? [address, vault] : undefined,
@@ -93,7 +98,7 @@ export default function DepositModal({
   const parsedAmount = (() => {
     try {
       if (!amount || parseFloat(amount) <= 0) return 0n;
-      return parseUnits(amount, 6);
+      return parseUnits(amount, assetDecimals);
     } catch {
       return 0n;
     }
@@ -106,7 +111,7 @@ export default function DepositModal({
     !paused &&
     (openDeposits || isApproved === true) &&
     parsedAmount > 0n &&
-    parsedAmount <= (usdcBalance ?? 0n);
+    parsedAmount <= (assetBalance ?? 0n);
 
   // Handle approval confirmation
   useEffect(() => {
@@ -128,14 +133,15 @@ export default function DepositModal({
     setStep("approving");
     approve(
       {
-        address: usdc,
+        address: assetAddress,
         abi: ERC20_ABI,
         functionName: "approve",
         args: [vault, parsedAmount],
       },
       {
         onError: (err) => {
-          setErrorMsg(err.message);
+          const msg = (err as any).shortMessage || "Transaction was rejected or reverted.";
+          setErrorMsg(msg);
           setStep("error");
         },
       },
@@ -154,24 +160,41 @@ export default function DepositModal({
       },
       {
         onError: (err) => {
-          setErrorMsg(err.message);
+          const msg = (err as any).shortMessage || "Transaction was rejected or reverted.";
+          setErrorMsg(msg);
           setStep("error");
         },
       },
     );
   }
 
-  const balanceFormatted = usdcBalance
-    ? formatUnits(usdcBalance, 6)
+  const balanceFormatted = assetBalance
+    ? formatUnits(assetBalance, assetDecimals)
     : "0";
 
+  // Close modal on Escape key
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div
+      className="modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="deposit-modal-title"
+      onClick={onClose}
+    >
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="panel-title">
-          <span>Deposit USDC</span>
+          <span id="deposit-modal-title">Deposit {assetSymbol}</span>
           <button
             onClick={onClose}
+            aria-label="Close"
             style={{
               background: "none",
               border: "none",
@@ -211,7 +234,7 @@ export default function DepositModal({
               className="font-[family-name:var(--font-plus-jakarta)] text-lg"
               style={{ color: "var(--color-accent)", marginBottom: "1rem" }}
             >
-              Deposited {amount} USDC
+              Deposited {amount} {assetSymbol}
             </div>
             {depositHash && (
               <a
@@ -235,15 +258,27 @@ export default function DepositModal({
             </div>
             <div
               style={{
+                fontSize: "12px",
+                color: "rgba(255,255,255,0.5)",
+                marginBottom: "0.5rem",
+              }}
+            >
+              {errorMsg}
+            </div>
+            <details
+              style={{
                 fontSize: "10px",
-                color: "rgba(255,255,255,0.4)",
+                color: "rgba(255,255,255,0.3)",
                 maxHeight: "100px",
                 overflow: "auto",
                 wordBreak: "break-all",
               }}
             >
+              <summary style={{ cursor: "pointer", marginBottom: "0.25rem" }}>
+                Technical details
+              </summary>
               {errorMsg}
-            </div>
+            </details>
             <button
               className="btn-follow"
               style={{ marginTop: "1rem" }}
@@ -263,8 +298,8 @@ export default function DepositModal({
                 marginBottom: "0.5rem",
               }}
             >
-              <span>Your USDC Balance</span>
-              <span>{parseFloat(balanceFormatted).toLocaleString()} USDC</span>
+              <span>Your {assetSymbol} Balance</span>
+              <span>{parseFloat(balanceFormatted).toLocaleString()} {assetSymbol}</span>
             </div>
 
             {/* Amount input */}
@@ -275,7 +310,10 @@ export default function DepositModal({
                 placeholder="0.00"
                 value={amount}
                 onChange={(e) => {
-                  const val = e.target.value.replace(/[^0-9.]/g, "");
+                  let val = e.target.value.replace(/[^0-9.]/g, "");
+                  // Prevent multiple decimal points
+                  const parts = val.split(".");
+                  if (parts.length > 2) val = parts[0] + "." + parts.slice(1).join("");
                   setAmount(val);
                 }}
                 className="deposit-input"
@@ -301,7 +339,7 @@ export default function DepositModal({
                 >
                   {step === "approving"
                     ? "Approving..."
-                    : `Approve ${amount || "0"} USDC`}
+                    : `Approve ${amount || "0"} ${assetSymbol}`}
                 </button>
               ) : (
                 <button
@@ -312,7 +350,7 @@ export default function DepositModal({
                 >
                   {step === "depositing"
                     ? "Depositing..."
-                    : `Deposit ${amount || "0"} USDC`}
+                    : `Deposit ${amount || "0"} ${assetSymbol}`}
                 </button>
               )}
             </div>

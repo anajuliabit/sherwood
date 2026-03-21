@@ -224,7 +224,7 @@ function buildMockData(vault: Address): GovernorData {
     params: {
       votingPeriod: 3n * DAY,
       executionWindow: DAY,
-      quorumBps: 2000n,  // 20%
+      vetoThresholdBps: 2000n,  // 20%
       maxPerformanceFeeBps: 3000n, // 30%
       cooldownPeriod: DAY,
       collaborationWindow: 48n * 3600n,
@@ -267,6 +267,18 @@ export default async function ProposalsPage({
   const isMock = !liveGovernor;
   const governor = liveGovernor ?? buildMockData(data.vault);
 
+  // Enrich proposals with P&L from activity feed
+  if (liveGovernor && data.activity.length > 0) {
+    for (const proposal of governor.proposals) {
+      const settled = data.activity.find(
+        (a) => a.type === "settled" && a.proposalId === proposal.id,
+      );
+      if (settled && settled.pnl !== undefined) {
+        proposal.pnl = settled.pnl;
+      }
+    }
+  }
+
   const activeProposal =
     governor.proposals.find(
       (p) => p.computedState === ProposalState.Executed,
@@ -299,7 +311,7 @@ export default async function ProposalsPage({
       <div className="scanlines" style={{ opacity: 0.2 }} />
 
       <div className="layout layout-normal">
-        <main className="px-16 mx-auto w-full max-w-[1400px]">
+        <main className="px-4 md:px-8 lg:px-16 mx-auto w-full max-w-[1400px]">
           <SiteHeader />
 
           <SyndicateClient
@@ -323,9 +335,9 @@ export default async function ProposalsPage({
               </div>
             </div>
             <div className="stat-item">
-              <div className="stat-label">Quorum</div>
+              <div className="stat-label">Veto Threshold</div>
               <div className="stat-value" style={{ fontSize: "1.2rem" }}>
-                {formatBps(governor.params.quorumBps)}
+                {formatBps(governor.params.vetoThresholdBps)}
               </div>
             </div>
             <div className="stat-item">
@@ -372,6 +384,7 @@ export default async function ProposalsPage({
                   proposal={p}
                   governorAddress={governor.governorAddress}
                   params={governor.params}
+                  assetDecimals={data.assetDecimals}
                 />
               ))}
             </div>
@@ -381,11 +394,19 @@ export default async function ProposalsPage({
           <div className="grid-dashboard" style={{ marginTop: "1.5rem" }}>
             <div style={{ position: "relative" }}>
               {isMock && <MockBadge />}
-              <ProposalHistory proposals={governor.proposals} />
+              <ProposalHistory
+                proposals={governor.proposals}
+                assetDecimals={data.assetDecimals}
+                assetSymbol={data.assetSymbol}
+              />
             </div>
             <div style={{ position: "relative" }}>
               {isMock && <MockBadge />}
-              <AgentStats proposals={governor.proposals} />
+              <AgentStats
+                proposals={governor.proposals}
+                assetDecimals={data.assetDecimals}
+                assetSymbol={data.assetSymbol}
+              />
             </div>
           </div>
         </main>

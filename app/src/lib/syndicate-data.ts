@@ -5,6 +5,7 @@
  * then hydrates with on-chain data, IPFS metadata, and ENS text records.
  */
 
+import { cache } from "react";
 import { type Address, namehash } from "viem";
 import {
   CHAINS,
@@ -25,6 +26,23 @@ import {
 } from "./eas-queries";
 
 // ── Types ──────────────────────────────────────────────────
+
+export type ActivityEventType =
+  | "deposit"
+  | "withdrawal"
+  | "executed"
+  | "settled"
+  | "cancelled";
+
+export interface ActivityEvent {
+  type: ActivityEventType;
+  actor: string;
+  amount: bigint;
+  timestamp: bigint;
+  txHash: string;
+  proposalId?: bigint;
+  pnl?: bigint;
+}
 
 export interface AgentIdentity {
   name: string;
@@ -101,6 +119,12 @@ export interface SyndicatePageData {
   // EAS attestations
   attestations: AttestationItem[];
 
+  // Strategy activity feed
+  activity: ActivityEvent[];
+
+  // Equity curve (7 daily data points)
+  equityCurve: number[];
+
   // Formatted display values
   display: {
     tvl: string;
@@ -114,7 +138,7 @@ export interface SyndicatePageData {
 const PINATA_GATEWAY =
   process.env.PINATA_GATEWAY || "https://sherwood.mypinata.cloud";
 
-async function fetchMetadata(
+export async function fetchMetadata(
   ipfsURI: string,
 ): Promise<SyndicateMetadata | null> {
   try {
@@ -192,9 +216,10 @@ async function fetchOnChainAgents(
 
 // ── Main data fetching ─────────────────────────────────────
 
-export async function resolveSyndicateBySubdomain(
-  subdomain: string,
-): Promise<SyndicatePageData | null> {
+export const resolveSyndicateBySubdomain = cache(
+  async function resolveSyndicateBySubdomain(
+    subdomain: string,
+  ): Promise<SyndicatePageData | null> {
   // Try all chains in parallel — first non-null wins
   const attempts = await Promise.all(
     Object.entries(CHAINS).map(async ([chainIdStr, entry]) => {
@@ -221,7 +246,8 @@ export async function resolveSyndicateBySubdomain(
   if (!match) return null;
 
   return resolveOnChain(match.chainId, match.entry, subdomain, match.syndicateId);
-}
+  },
+);
 
 async function resolveOnChain(
   chainId: number,
@@ -371,10 +397,12 @@ async function resolveOnChain(
   }
 
   // Step 4: Parallel off-chain reads
-  const [metadata, xmtpGroupId, attestations] = await Promise.all([
+  const [metadata, xmtpGroupId, attestations, activity, equityCurve] = await Promise.all([
     fetchMetadata(metadataURI),
     fetchXmtpGroupId(chainId, subdomain, addresses.l2Registry),
     fetchSyndicateAttestations(creator, syndicateId, chainId),
+    fetchStrategyActivity(entry.subgraphUrl, syndicateId.toString()),
+    fetchEquityCurve(entry.subgraphUrl, syndicateId.toString(), assetDecimals, totalAssets),
   ]);
 
   // Format display values based on asset
@@ -415,6 +443,8 @@ async function resolveOnChain(
     metadata,
     xmtpGroupId,
     attestations,
+    activity,
+    equityCurve,
     display: {
       tvl: isUSD ? tvlFormatted : `${tvlFormatted} ${assetSymbol}`,
       totalDeposited: isUSD
@@ -491,6 +521,247 @@ async function parseAgentMetadata(uri: string): Promise<AgentIdentity | null> {
     };
   } catch {
     return null;
+  }
+}
+
+// ── Strategy activity feed ─────────────────────────────────
+
+async function fetchStrategyActivity(
+  subgraphUrl: string | null,
+  syndicateId: string,
+): Promise<ActivityEvent[]> {
+  if (!subgraphUrl) return [];
+
+  try {
+    const response = await fetch(subgraphUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: `{
+          deposits(
+            where: { syndicate: "${syndicateId}" }
+            orderBy: timestamp
+            orderDirection: desc
+            first: 20
+          ) {
+            sender
+            assets
+            timestamp
+            txHash
+          }
+          withdrawals(
+            where: { syndicate: "${syndicateId}" }
+            orderBy: timestamp
+            orderDirection: desc
+            first: 20
+          ) {
+            owner
+            assets
+            timestamp
+            txHash
+          }
+          proposals(
+            where: { syndicate: "${syndicateId}", state_in: ["Executed", "Settled", "Cancelled"] }
+            orderBy: createdAt
+            orderDirection: desc
+            first: 20
+          ) {
+            id
+            proposer
+            capitalSnapshot
+            finalPnl
+            state
+            executedAt
+            settledAt
+            createdAt
+            txHash
+          }
+        }`,
+      }),
+      next: { revalidate: 60 },
+    });
+
+    if (!response.ok) return [];
+    const result = await response.json();
+    const data = result?.data;
+    if (!data) return [];
+
+    const events: ActivityEvent[] = [];
+
+    for (const d of data.deposits ?? []) {
+      events.push({
+        type: "deposit",
+        actor: d.sender,
+        amount: BigInt(d.assets),
+        timestamp: BigInt(d.timestamp),
+        txHash: d.txHash,
+      });
+    }
+
+    for (const w of data.withdrawals ?? []) {
+      events.push({
+        type: "withdrawal",
+        actor: w.owner,
+        amount: BigInt(w.assets),
+        timestamp: BigInt(w.timestamp),
+        txHash: w.txHash,
+      });
+    }
+
+    for (const p of data.proposals ?? []) {
+      const state = p.state as string;
+      if (state === "Executed" && p.executedAt) {
+        events.push({
+          type: "executed",
+          actor: p.proposer,
+          amount: p.capitalSnapshot ? BigInt(p.capitalSnapshot) : 0n,
+          timestamp: BigInt(p.executedAt),
+          txHash: p.txHash,
+          proposalId: BigInt(p.id),
+        });
+      }
+      if (state === "Settled" && p.settledAt) {
+        events.push({
+          type: "settled",
+          actor: p.proposer,
+          amount: p.capitalSnapshot ? BigInt(p.capitalSnapshot) : 0n,
+          timestamp: BigInt(p.settledAt),
+          txHash: p.txHash,
+          proposalId: BigInt(p.id),
+          pnl: p.finalPnl != null ? BigInt(p.finalPnl) : undefined,
+        });
+      }
+      if (state === "Cancelled") {
+        const ts = p.executedAt ?? p.settledAt ?? p.createdAt;
+        if (!ts || ts === "0") continue;
+        events.push({
+          type: "cancelled",
+          actor: p.proposer,
+          amount: 0n,
+          timestamp: BigInt(ts),
+          txHash: p.txHash,
+          proposalId: BigInt(p.id),
+        });
+      }
+    }
+
+    // Sort by timestamp desc, take 20 most recent
+    events.sort((a, b) => (b.timestamp > a.timestamp ? 1 : b.timestamp < a.timestamp ? -1 : 0));
+    return events.slice(0, 20);
+  } catch {
+    return [];
+  }
+}
+
+// ── Equity curve ──────────────────────────────────────────
+
+async function fetchEquityCurve(
+  subgraphUrl: string | null,
+  syndicateId: string,
+  assetDecimals: number,
+  currentTotalAssets: bigint,
+): Promise<number[]> {
+  const currentTVL = Number(currentTotalAssets) / 10 ** assetDecimals;
+
+  if (!subgraphUrl) return [currentTVL];
+
+  try {
+    const response = await fetch(subgraphUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: `{
+          deposits(
+            where: { syndicate: "${syndicateId}" }
+            orderBy: timestamp
+            orderDirection: asc
+            first: 1000
+          ) {
+            assets
+            timestamp
+          }
+          withdrawals(
+            where: { syndicate: "${syndicateId}" }
+            orderBy: timestamp
+            orderDirection: asc
+            first: 1000
+          ) {
+            assets
+            timestamp
+          }
+          proposals(
+            where: { syndicate: "${syndicateId}", state: "Settled" }
+            orderBy: settledAt
+            orderDirection: asc
+            first: 1000
+          ) {
+            finalPnl
+            settledAt
+          }
+        }`,
+      }),
+      next: { revalidate: 60 },
+    });
+
+    if (!response.ok) return [currentTVL];
+    const result = await response.json();
+    const data = result?.data;
+    if (!data) return [currentTVL];
+
+    // Build chronological event list
+    const events: { timestamp: number; delta: bigint }[] = [];
+
+    for (const d of data.deposits ?? []) {
+      events.push({ timestamp: Number(d.timestamp), delta: BigInt(d.assets) });
+    }
+    for (const w of data.withdrawals ?? []) {
+      events.push({ timestamp: Number(w.timestamp), delta: -BigInt(w.assets) });
+    }
+    for (const p of data.proposals ?? []) {
+      if (p.finalPnl != null && p.settledAt) {
+        events.push({ timestamp: Number(p.settledAt), delta: BigInt(p.finalPnl) });
+      }
+    }
+
+    if (events.length === 0) return [currentTVL];
+
+    events.sort((a, b) => a.timestamp - b.timestamp);
+
+    // Compute cumulative TVL at each event
+    let runningTVL = 0n;
+    const tvlPoints: { timestamp: number; tvl: bigint }[] = [];
+    for (const evt of events) {
+      runningTVL += evt.delta;
+      if (runningTVL < 0n) runningTVL = 0n;
+      tvlPoints.push({ timestamp: evt.timestamp, tvl: runningTVL });
+    }
+
+    // Sample into 7 daily buckets
+    const now = Math.floor(Date.now() / 1000);
+    const DAY = 86400;
+    const days = 7;
+    const curve: number[] = [];
+
+    for (let i = days - 1; i >= 0; i--) {
+      const dayEnd = now - i * DAY;
+      // Find the last TVL point at or before this day's end
+      let dayTVL = 0n;
+      for (const p of tvlPoints) {
+        if (p.timestamp <= dayEnd) {
+          dayTVL = p.tvl;
+        } else {
+          break;
+        }
+      }
+      curve.push(Number(dayTVL) / 10 ** assetDecimals);
+    }
+
+    // Replace last point with actual on-chain TVL for accuracy
+    curve[curve.length - 1] = currentTVL;
+
+    return curve;
+  } catch {
+    return [currentTVL];
   }
 }
 

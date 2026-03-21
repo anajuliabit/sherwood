@@ -12,12 +12,14 @@ interface ProposalCardProps {
   proposal: ProposalData;
   governorAddress: Address;
   params: GovernorParams;
+  assetDecimals: number;
 }
 
 export default function ProposalCard({
   proposal,
   governorAddress,
   params,
+  assetDecimals,
 }: ProposalCardProps) {
   const title =
     proposal.metadata?.title || `Proposal #${proposal.id.toString()}`;
@@ -112,7 +114,7 @@ export default function ProposalCard({
               className="vote-progress-against"
               style={{ width: `${againstPct}%` }}
             />
-            {/* Quorum marker removed — quorumBps is % of total supply,
+            {/* Veto threshold marker removed — vetoThresholdBps is % of total supply,
                 not % of votes cast. Shown as text below instead. */}
           </div>
           <div
@@ -129,7 +131,7 @@ export default function ProposalCard({
               FOR {forPct.toFixed(1)}%
             </span>
             <span>
-              {formatShares(totalVotes)} shares voted · Quorum: {formatBps(params.quorumBps)}
+              {formatShares(totalVotes, assetDecimals)} shares voted · Veto Threshold: {formatBps(params.vetoThresholdBps)}
             </span>
             <span style={{ color: "#ff4d4d" }}>
               {againstPct.toFixed(1)}% AGAINST

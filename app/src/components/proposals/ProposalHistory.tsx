@@ -4,10 +4,12 @@ import {
   PROPOSAL_STATE_LABELS,
   formatDuration,
 } from "@/lib/governor-data";
-import { truncateAddress, formatUSDC, formatBps } from "@/lib/contracts";
+import { truncateAddress, formatAsset, formatBps } from "@/lib/contracts";
 
 interface ProposalHistoryProps {
   proposals: ProposalData[];
+  assetDecimals: number;
+  assetSymbol: string;
 }
 
 function StateBadge({ state, pnl }: { state: ProposalState; pnl?: bigint }) {
@@ -58,15 +60,35 @@ function StateBadge({ state, pnl }: { state: ProposalState; pnl?: bigint }) {
   );
 }
 
-function formatPnL(pnl: bigint): { text: string; color: string } {
+function formatPnL(
+  pnl: bigint,
+  decimals: number,
+  symbol: string,
+): { text: string; color: string } {
+  const isUSD = symbol === "USDC" || symbol === "USDT";
   const abs = pnl < 0n ? -pnl : pnl;
-  const formatted = formatUSDC(abs);
-  if (pnl > 0n) return { text: `+${formatted}`, color: "var(--color-accent)" };
-  if (pnl < 0n) return { text: `-${formatted}`, color: "#ff4d4d" };
-  return { text: formatted, color: "rgba(255,255,255,0.5)" };
+  const formatted = formatAsset(abs, decimals, isUSD ? "USD" : undefined);
+  const display = isUSD ? formatted : `${formatted} ${symbol}`;
+  if (pnl > 0n) return { text: `+${display}`, color: "var(--color-accent)" };
+  if (pnl < 0n) return { text: `-${display}`, color: "#ff4d4d" };
+  return { text: display, color: "rgba(255,255,255,0.5)" };
 }
 
-export default function ProposalHistory({ proposals }: ProposalHistoryProps) {
+function formatCapital(
+  raw: bigint,
+  decimals: number,
+  symbol: string,
+): string {
+  const isUSD = symbol === "USDC" || symbol === "USDT";
+  const formatted = formatAsset(raw, decimals, isUSD ? "USD" : undefined);
+  return isUSD ? formatted : `${formatted} ${symbol}`;
+}
+
+export default function ProposalHistory({
+  proposals,
+  assetDecimals,
+  assetSymbol,
+}: ProposalHistoryProps) {
   const historical = proposals.filter(
     (p) =>
       p.computedState === ProposalState.Settled ||
@@ -100,19 +122,19 @@ export default function ProposalHistory({ proposals }: ProposalHistoryProps) {
         <table className="log-table">
           <thead>
             <tr>
-              <th>#</th>
-              <th>State</th>
-              <th>Agent</th>
-              <th>Capital</th>
-              <th>P&L</th>
-              <th>Fee</th>
-              <th>Duration</th>
+              <th scope="col">#</th>
+              <th scope="col">State</th>
+              <th scope="col">Agent</th>
+              <th scope="col">Capital</th>
+              <th scope="col">P&L</th>
+              <th scope="col">Fee</th>
+              <th scope="col">Duration</th>
             </tr>
           </thead>
           <tbody>
             {historical.map((p) => {
               const pnlDisplay = p.pnl !== undefined
-                ? formatPnL(p.pnl)
+                ? formatPnL(p.pnl, assetDecimals, assetSymbol)
                 : null;
 
               return (
@@ -124,8 +146,8 @@ export default function ProposalHistory({ proposals }: ProposalHistoryProps) {
                   <td>{truncateAddress(p.proposer)}</td>
                   <td>
                     {p.capitalSnapshot > 0n
-                      ? formatUSDC(p.capitalSnapshot)
-                      : "—"}
+                      ? formatCapital(p.capitalSnapshot, assetDecimals, assetSymbol)
+                      : "\u2014"}
                   </td>
                   <td
                     style={{
@@ -133,7 +155,7 @@ export default function ProposalHistory({ proposals }: ProposalHistoryProps) {
                       fontWeight: pnlDisplay ? 600 : 400,
                     }}
                   >
-                    {pnlDisplay?.text ?? "—"}
+                    {pnlDisplay?.text ?? "\u2014"}
                   </td>
                   <td>{formatBps(p.performanceFeeBps)}</td>
                   <td>{formatDuration(p.strategyDuration)}</td>

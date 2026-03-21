@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { CHAIN_BADGES } from "@/lib/contracts";
+import { CHAIN_BADGES, truncateAddress } from "@/lib/contracts";
 import type { SyndicateDisplay } from "@/lib/syndicates";
 
 interface RankedSyndicate extends SyndicateDisplay {
@@ -22,19 +22,21 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
 export default function LeaderboardTabs({ syndicates }: LeaderboardTabsProps) {
   const [tab, setTab] = useState<"syndicates" | "agents">("syndicates");
 
-  // Build agent list from syndicates
+  // Build agent list from syndicates, sorted by P&L descending
   const agents = syndicates
     .flatMap((s) =>
-      Array.from({ length: s.agentCount }, (_, i) => ({
+      s.agents.map((a) => ({
+        agentAddress: a.agentAddress,
+        agentId: a.agentId,
+        proposalCount: a.proposalCount,
+        totalPnl: a.totalPnl,
+        totalPnlRaw: a.totalPnlRaw,
         syndicateSubdomain: s.subdomain,
         syndicateName: s.name,
-        syndicateTVL: s.tvl,
-        tvlNum: s.tvlNum,
         chainId: s.chainId,
-        agentIndex: i,
       })),
     )
-    .sort((a, b) => b.tvlNum - a.tvlNum);
+    .sort((a, b) => b.totalPnlRaw - a.totalPnlRaw);
 
   return (
     <div className="font-[family-name:var(--font-plus-jakarta)]">
@@ -73,14 +75,14 @@ export default function LeaderboardTabs({ syndicates }: LeaderboardTabsProps) {
             <table>
               <thead>
                 <tr>
-                  <th style={{ width: "40px" }}>Rank</th>
-                  <th>Syndicate</th>
-                  <th>Strategy</th>
-                  <th>TVL</th>
-                  <th>Agents</th>
-                  <th>Status</th>
-                  <th>Chain</th>
-                  <th style={{ textAlign: "right" }}>Action</th>
+                  <th scope="col" style={{ width: "40px" }}>Rank</th>
+                  <th scope="col">Syndicate</th>
+                  <th scope="col">Strategy</th>
+                  <th scope="col">TVL</th>
+                  <th scope="col">Agents</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Chain</th>
+                  <th scope="col" style={{ textAlign: "right" }}>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -183,18 +185,20 @@ export default function LeaderboardTabs({ syndicates }: LeaderboardTabsProps) {
             <table>
               <thead>
                 <tr>
-                  <th style={{ width: "40px" }}>#</th>
-                  <th>Syndicate</th>
-                  <th>Syndicate TVL</th>
-                  <th>Chain</th>
-                  <th style={{ textAlign: "right" }}>Action</th>
+                  <th scope="col" style={{ width: "40px" }}>#</th>
+                  <th scope="col">Agent</th>
+                  <th scope="col">Syndicate</th>
+                  <th scope="col">Strategies</th>
+                  <th scope="col">P&L</th>
+                  <th scope="col">Chain</th>
+                  <th scope="col" style={{ textAlign: "right" }}>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {agents.map((a, i) => {
                   const badge = CHAIN_BADGES[a.chainId];
                   return (
-                    <tr key={`${a.syndicateSubdomain}-${a.agentIndex}`}>
+                    <tr key={`${a.agentAddress}-${a.syndicateSubdomain}`}>
                       <td
                         style={{
                           color: "var(--color-accent)",
@@ -202,6 +206,21 @@ export default function LeaderboardTabs({ syndicates }: LeaderboardTabsProps) {
                         }}
                       >
                         {String(i + 1).padStart(2, "0")}
+                      </td>
+                      <td>
+                        <span className="text-white font-medium">
+                          {truncateAddress(a.agentAddress)}
+                        </span>
+                        <span
+                          className="block mt-0.5"
+                          style={{
+                            color: "var(--color-accent)",
+                            fontSize: "10px",
+                            opacity: 0.7,
+                          }}
+                        >
+                          ERC-8004 #{a.agentId}
+                        </span>
                       </td>
                       <td>
                         <Link
@@ -220,7 +239,20 @@ export default function LeaderboardTabs({ syndicates }: LeaderboardTabsProps) {
                           {a.syndicateSubdomain}.sherwoodagent.eth
                         </span>
                       </td>
-                      <td className="apy-highlight">{a.syndicateTVL}</td>
+                      <td>{a.proposalCount}</td>
+                      <td
+                        style={{
+                          color:
+                            a.totalPnlRaw > 0
+                              ? "var(--color-accent)"
+                              : a.totalPnlRaw < 0
+                                ? "#ff4d4d"
+                                : "rgba(255,255,255,0.5)",
+                          fontWeight: a.totalPnlRaw !== 0 ? 600 : 400,
+                        }}
+                      >
+                        {a.totalPnl}
+                      </td>
                       <td>
                         {badge && (
                           <span
@@ -239,10 +271,10 @@ export default function LeaderboardTabs({ syndicates }: LeaderboardTabsProps) {
                       </td>
                       <td style={{ textAlign: "right" }}>
                         <Link
-                          href={`/syndicate/${a.syndicateSubdomain}`}
+                          href={`/syndicate/${a.syndicateSubdomain}/agents`}
                           className="btn-follow"
                         >
-                          [ VIEW SYNDICATE ]
+                          [ VIEW AGENT ]
                         </Link>
                       </td>
                     </tr>

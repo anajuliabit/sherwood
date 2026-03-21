@@ -1,11 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { type Address } from "viem";
 import { truncateAddress, CHAIN_BADGES } from "@/lib/contracts";
 import WalletButton from "@/components/WalletButton";
 
-export type TabId = "vault" | "proposals";
+export type TabId = "vault" | "proposals" | "agents";
 
 interface SyndicateHeaderProps {
   name: string;
@@ -18,20 +19,41 @@ interface SyndicateHeaderProps {
 }
 
 function InlineCopy({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch {
+      // Fallback for non-secure contexts
+      const textarea = document.createElement("textarea");
+      textarea.value = value;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
   return (
     <button
-      onClick={() => navigator.clipboard.writeText(value)}
+      onClick={handleCopy}
+      aria-label="Copy to clipboard"
       style={{
         background: "none",
         border: "none",
-        color: "rgba(255,255,255,0.3)",
+        color: copied ? "var(--color-accent, #4ade80)" : "rgba(255,255,255,0.3)",
         cursor: "pointer",
         padding: 0,
         fontSize: "10px",
       }}
       title="Copy"
     >
-      [c]
+      {copied ? "\u2713" : "[c]"}
     </button>
   );
 }
@@ -45,7 +67,7 @@ export default function SyndicateHeader({
   chainId,
   activeTab,
 }: SyndicateHeaderProps) {
-  const badge = CHAIN_BADGES[chainId] || CHAIN_BADGES[84532];
+  const badge = CHAIN_BADGES[chainId] || CHAIN_BADGES[8453];
 
   return (
     <div className="agent-header" style={{ flexDirection: "column", alignItems: "stretch", gap: "1rem" }}>
@@ -91,14 +113,23 @@ export default function SyndicateHeader({
         <Link
           href={`/syndicate/${subdomain}`}
           className={`syndicate-tab ${activeTab === "vault" ? "syndicate-tab-active" : ""}`}
+          aria-current={activeTab === "vault" ? "page" : undefined}
         >
           Vault
         </Link>
         <Link
           href={`/syndicate/${subdomain}/proposals`}
           className={`syndicate-tab ${activeTab === "proposals" ? "syndicate-tab-active" : ""}`}
+          aria-current={activeTab === "proposals" ? "page" : undefined}
         >
           Proposals
+        </Link>
+        <Link
+          href={`/syndicate/${subdomain}/agents`}
+          className={`syndicate-tab ${activeTab === "agents" ? "syndicate-tab-active" : ""}`}
+          aria-current={activeTab === "agents" ? "page" : undefined}
+        >
+          Agents
         </Link>
       </nav>
     </div>
