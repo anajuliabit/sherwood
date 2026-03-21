@@ -122,7 +122,7 @@ export interface SyndicatePageData {
   // Strategy activity feed
   activity: ActivityEvent[];
 
-  // Equity curve (30 daily data points)
+  // Equity curve (7 daily data points)
   equityCurve: number[];
 
   // Formatted display values
@@ -736,10 +736,10 @@ async function fetchEquityCurve(
       tvlPoints.push({ timestamp: evt.timestamp, tvl: runningTVL });
     }
 
-    // Sample into 30 daily buckets
+    // Sample into 7 daily buckets
     const now = Math.floor(Date.now() / 1000);
     const DAY = 86400;
-    const days = 30;
+    const days = 7;
     const curve: number[] = [];
 
     for (let i = days - 1; i >= 0; i--) {

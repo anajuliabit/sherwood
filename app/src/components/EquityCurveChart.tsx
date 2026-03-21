@@ -47,7 +47,7 @@ export default function EquityCurveChart({ data, hwm }: EquityCurveChartProps) {
   return (
     <div className="chart-container">
       <div className="panel-title font-[family-name:var(--font-plus-jakarta)]">
-        <span>Equity Curve (30D)</span>
+        <span>Equity Curve (7D)</span>
         <span style={{ color: "var(--color-accent)" }}>HWM: {hwm}</span>
       </div>
       <div style={{ height: "280px", width: "100%" }}>
