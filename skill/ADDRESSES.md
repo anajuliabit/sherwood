@@ -8,9 +8,9 @@ These are also available in `cli/src/lib/addresses.ts` (resolved at runtime base
 
 | Contract | Address |
 |----------|---------|
-| SyndicateFactory | `0x8776F4C9b181C3AC14eB3271B69D297627d79cee` |
-| SyndicateGovernor | `0x4eC24F423c79cc94624c6f555071FF49989910bD` |
-| BatchExecutorLib | `0xC6744E4941f4810fDadB72c795aD3EE7cb55D925` |
+| SyndicateFactory | `0x5cBE8269CfF68D52329B8E0F9174F893627AFf0f` |
+| SyndicateGovernor | `0x9a0C8BB6744058Aaf36690EAA9f3fC1d7619F169` |
+| BatchExecutorLib | `0x195BA762c7d183B25e161d214c5622DB541d4eE3` |
 | USDC | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` (6 decimals) |
 | WETH | `0x4200000000000000000000000000000000000006` |
 | Moonwell Comptroller | `0xfBb21d0380beE3312B33c4353c8936a0F13EF26C` |
@@ -28,9 +28,9 @@ These are also available in `cli/src/lib/addresses.ts` (resolved at runtime base
 
 | Contract | Address |
 |----------|---------|
-| SyndicateFactory | `0x2efD194ADb3Db40E0e6faAe06c4e602c7a3D9199` |
-| SyndicateGovernor | `0x6fc67a9aD15eD3A9DE25c29CCe10D662079129E2` |
-| BatchExecutorLib | `0xd5C4eE2E4c5B606b9401E69A3B3FeE169037C284` |
+| SyndicateFactory | `0xffB15e53360b01fEecb8952Ec4F4e809cB0D4965` |
+| SyndicateGovernor | `0x18Fd69B362E935f52b233bEeD033425C859605C5` |
+| BatchExecutorLib | `0x3e9aFad2DAAD410F9aeF997ebeE6cE9c46D63163` |
 | USDC (test) | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 | WETH | `0x4200000000000000000000000000000000000006` |
 
@@ -38,9 +38,9 @@ These are also available in `cli/src/lib/addresses.ts` (resolved at runtime base
 
 | Contract | Address |
 |----------|---------|
-| SyndicateFactory | `0xea644E2Bc0215fC73B11f52CB16a87334B0922E6` |
-| SyndicateGovernor | `0x5cBE8269CfF68D52329B8E0F9174F893627AFf0f` |
-| BatchExecutorLib | `0x70d0E510454eE246BFCFD53F2204f2487B19a137` |
+| SyndicateFactory | `0x0Fc5367463A5ae2723BAAb45F73EC4B0c21EBD3f` |
+| SyndicateGovernor | `0x143Ee933cCa54C1511518397F51B1A80dF9eEEAb` |
+| BatchExecutorLib | `0xa6De4583937b71E319B4570830C8FBEDdEAA2432` |
 | WETH | `0x7943e237c7F95DA44E0301572D358911207852Fa` |
 
 ## EAS (Ethereum Attestation Service)

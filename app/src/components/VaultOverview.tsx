@@ -59,9 +59,7 @@ export default function VaultOverview({
         <div className="param-row">
           <span className="param-key">Total Shares</span>
           <span className="param-val">
-            {/* Vault share decimals = asset.decimals() + _decimalsOffset()
-                where _decimalsOffset() = 0 (OZ default, no override in SyndicateVault) */}
-            {formatShares(totalSupply, assetDecimals)}
+            {(Number(totalSupply) / 10 ** (assetDecimals * 2)).toLocaleString()}
           </span>
         </div>
       </div>
