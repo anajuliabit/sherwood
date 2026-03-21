@@ -1,11 +1,18 @@
 "use client";
 
 import { http, createConfig } from "wagmi";
-import { base, baseSepolia } from "wagmi/chains";
 import { coinbaseWallet, walletConnect, injected } from "wagmi/connectors";
-import { robinhoodTestnet, getRpcUrl } from "@/lib/contracts";
+import { CHAINS, getRpcUrl } from "@/lib/contracts";
+import type { Chain } from "viem";
 
-const chains = [base, baseSepolia, robinhoodTestnet] as const;
+const chains = Object.values(CHAINS).map((e) => e.chain) as [
+  Chain,
+  ...Chain[],
+];
+
+const transports = Object.fromEntries(
+  Object.keys(CHAINS).map((id) => [Number(id), http(getRpcUrl(Number(id)))]),
+);
 
 export const wagmiConfig = createConfig({
   chains,
@@ -19,9 +26,5 @@ export const wagmiConfig = createConfig({
     }),
     injected(),
   ],
-  transports: {
-    [base.id]: http(getRpcUrl(8453)),
-    [baseSepolia.id]: http(getRpcUrl(84532)),
-    [robinhoodTestnet.id]: http(getRpcUrl(46630)),
-  },
+  transports,
 });

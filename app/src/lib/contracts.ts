@@ -15,6 +15,8 @@ import {
 } from "viem";
 import { base, baseSepolia } from "viem/chains";
 
+export const IS_TESTNET = process.env.NEXT_PUBLIC_TESTNET === "true";
+
 // ── Robinhood L2 Testnet chain definition ────────────────
 
 export const robinhoodTestnet = defineChain({
@@ -52,7 +54,7 @@ const RPC_CONFIG: Record<number, { envSuffix: string; fallback: string }> = {
 /** Resolve RPC URL: NEXT_PUBLIC_RPC_URL_{BASE|BASE_SEPOLIA|ROBINHOOD_TESTNET} > fallback */
 export function getRpcUrl(chainId: number): string {
   const cfg = RPC_CONFIG[chainId];
-  if (!cfg) return RPC_CONFIG[84532].fallback;
+  if (!cfg) return RPC_CONFIG[IS_TESTNET ? 84532 : 8453].fallback;
   const envVal = process.env[`NEXT_PUBLIC_RPC_URL_${cfg.envSuffix}`];
   return envVal || cfg.fallback;
 }
@@ -133,8 +135,7 @@ export interface ChainEntry {
   subgraphUrl: string | null;
 }
 
-/** All active chains the app reads from. */
-export const CHAINS: Record<number, ChainEntry> = {
+const _ALL_CHAINS: Record<number, ChainEntry> = {
   84532: {
     chain: baseSepolia,
     addresses: BASE_SEPOLIA_ADDRESSES,
@@ -148,6 +149,13 @@ export const CHAINS: Record<number, ChainEntry> = {
   },
   8453: { chain: base, addresses: BASE_ADDRESSES, subgraphUrl: null },
 };
+
+/** Active chains — filtered by NEXT_PUBLIC_TESTNET at build time. */
+export const CHAINS: Record<number, ChainEntry> = Object.fromEntries(
+  Object.entries(_ALL_CHAINS).filter(([, entry]) =>
+    IS_TESTNET ? entry.chain.testnet === true : entry.chain.testnet !== true
+  )
+);
 
 // ── Public clients (one per chain, server-side) ──────────
 
@@ -169,13 +177,10 @@ export function getPublicClient(chainId?: number): PublicClient {
 
 // ── Legacy helpers (backwards compat for wagmi/Providers) ─
 
-const DEFAULT_CHAIN_ID = parseInt(
-  process.env.NEXT_PUBLIC_CHAIN_ID || "84532",
-  10,
-);
+const DEFAULT_CHAIN_ID = IS_TESTNET ? 84532 : 8453;
 
 export function getChain(): Chain {
-  return CHAINS[DEFAULT_CHAIN_ID]?.chain ?? baseSepolia;
+  return CHAINS[DEFAULT_CHAIN_ID]?.chain ?? (IS_TESTNET ? baseSepolia : base);
 }
 
 export function getChainId(): number {
@@ -185,7 +190,10 @@ export function getChainId(): number {
 /** Get addresses for a specific chain. */
 export function getAddresses(chainId?: number): ChainAddresses {
   const id = chainId ?? DEFAULT_CHAIN_ID;
-  return CHAINS[id]?.addresses ?? BASE_SEPOLIA_ADDRESSES;
+  return (
+    CHAINS[id]?.addresses ??
+    (IS_TESTNET ? BASE_SEPOLIA_ADDRESSES : BASE_ADDRESSES)
+  );
 }
 
 // ── ABIs ──────────────────────────────────────────────────
