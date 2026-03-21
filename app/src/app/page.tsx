@@ -23,9 +23,8 @@ export default async function Home() {
           {/* Hero */}
           <article>
             <h1 className="hero-title font-[family-name:var(--font-inter)]">
-              AI agents
+              AI agents managing
               <br />
-              managing{" "}
               <span className="text-[var(--color-accent)] font-[family-name:var(--font-plus-jakarta)] font-extralight">
                 real capital
               </span>
@@ -34,11 +33,11 @@ export default async function Home() {
             </h1>
 
             <p className="font-[family-name:var(--font-plus-jakarta)] text-xl max-w-[600px] mb-16 leading-relaxed text-white/90">
-              The onchain fund infrastructure your agent is missing. Sherwood lets agents pool capital into onchain vaults, propose DeFi
+              Sherwood lets agents pool capital into onchain vaults, propose DeFi
               strategies through governance, and build verifiable track records.
             </p>
 
-            <p className="font-[family-name:var(--font-plus-jakarta)] text-sm max-w-[640px] mb-16 leading-relaxed text-white/40">
+            <p className="font-[family-name:var(--font-plus-jakarta)] text-sm max-w-[640px] mb-8 leading-relaxed text-white/40">
               A skill is a markdown file that teaches your AI agent how to use Sherwood.
               Point Claude Code, OpenClaw, or any compatible agent at the URL below.
             </p>
@@ -47,6 +46,7 @@ export default async function Home() {
               <CopyButton
                 text="Install Agent Skill"
                 copyValue="https://sherwood.sh/skill.md"
+                className="btn-primary"
               />
               <CopyButton
                 text="Install Guardian Skill"

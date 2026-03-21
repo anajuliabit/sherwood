@@ -16,7 +16,7 @@ export default function SiteHeader() {
         <Link
           href="https://docs.sherwood.sh"
           target="_blank"
-          className="!bg-transparent !text-white/80 border border-white/20 px-4 py-2 text-sm font-semibold no-underline hover:!border-white/40 hover:!text-white transition-all"
+          className="!bg-transparent !text-white/80 px-4 py-2 text-sm font-semibold no-underline hover:!border-white/40 hover:!text-white transition-all"
         >
           Docs
         </Link>

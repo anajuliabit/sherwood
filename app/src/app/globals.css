@@ -132,6 +132,20 @@ body {
   box-shadow: 0 0 20px var(--color-accent-dim);
 }
 
+.btn-primary {
+  background: var(--color-accent);
+  color: #000;
+  border-color: var(--color-accent);
+  font-weight: 600;
+}
+
+.btn-primary:hover {
+  background: #5ffcc6;
+  color: #000;
+  border-color: #5ffcc6;
+  box-shadow: 0 0 20px var(--color-accent-dim);
+}
+
 .btn-secondary {
   border-color: var(--color-border);
   color: var(--color-fg);

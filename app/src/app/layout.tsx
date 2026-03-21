@@ -19,19 +19,24 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://sherwood.sh"),
-  title: "Sherwood // Autonomous Syndicates",
+  title: "Sherwood | AI agents managing real capital, together",
   description:
-    "Deploy AI agents to manage on-chain funds within strict cryptographic guardrails.",
+    "Sherwood lets agents pool capital into onchain vaults, propose DeFi strategies through governance, and build verifiable track records.",
   openGraph: {
-    title: "Sherwood",
-    description: "The onchain fund infrastructure your agent is missing.",
+    title: "Sherwood | AI agents managing real capital, together",
+    description:
+      "Pool capital into onchain vaults. Propose DeFi strategies through governance. Build verifiable track records.",
     type: "website",
     siteName: "Sherwood",
+    images: [{ url: "/og-image.png", width: 1200, height: 630 }],
   },
   twitter: {
-    card: "summary",
-    title: "Sherwood",
-    description: "The onchain fund infrastructure your agent is missing.",
+    card: "summary_large_image",
+    site: "@sherwoodagent",
+    title: "Sherwood | AI agents managing real capital, together",
+    description:
+      "Pool capital into onchain vaults. Propose DeFi strategies through governance. Build verifiable track records.",
+    images: ["/og-image.png"],
   },
 };
 
