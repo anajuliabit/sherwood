@@ -147,7 +147,12 @@ const _ALL_CHAINS: Record<number, ChainEntry> = {
     addresses: ROBINHOOD_TESTNET_ADDRESSES,
     subgraphUrl: null,
   },
-  8453: { chain: base, addresses: BASE_ADDRESSES, subgraphUrl: null },
+  8453: {
+    chain: base,
+    addresses: BASE_ADDRESSES,
+    subgraphUrl:
+      "https://api.studio.thegraph.com/query/18207/sherwood/version/latest",
+  },
 };
 
 /** Active chains — filtered by NEXT_PUBLIC_TESTNET at build time. */
