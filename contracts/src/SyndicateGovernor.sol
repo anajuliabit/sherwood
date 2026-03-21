@@ -444,14 +444,6 @@ contract SyndicateGovernor is GovernorParameters, UUPSUpgradeable {
     // ==================== PROTOCOL FEE SETTERS ====================
 
     /// @inheritdoc ISyndicateGovernor
-    function setProtocolFeeBps(uint256 newProtocolFeeBps) external onlyOwner {
-        if (newProtocolFeeBps > MAX_PROTOCOL_FEE_BPS) revert InvalidProtocolFeeBps();
-        uint256 old = _protocolFeeBps;
-        _protocolFeeBps = newProtocolFeeBps;
-        emit ProtocolFeeBpsUpdated(old, newProtocolFeeBps);
-    }
-
-    /// @inheritdoc ISyndicateGovernor
     function setProtocolFeeRecipient(address newRecipient) external onlyOwner {
         if (newRecipient == address(0)) revert InvalidProtocolFeeRecipient();
         address old = _protocolFeeRecipient;
@@ -552,6 +544,12 @@ contract SyndicateGovernor is GovernorParameters, UUPSUpgradeable {
     /// @inheritdoc ISyndicateGovernor
     function protocolFeeRecipient() external view returns (address) {
         return _protocolFeeRecipient;
+    }
+
+    function _applyProtocolFeeBpsChange(uint256 newValue) internal override {
+        uint256 old = _protocolFeeBps;
+        _protocolFeeBps = newValue;
+        emit ProtocolFeeBpsUpdated(old, newValue);
     }
 
     // ==================== INTERNAL ====================

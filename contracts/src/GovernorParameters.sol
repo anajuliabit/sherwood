@@ -54,6 +54,7 @@ abstract contract GovernorParameters is ISyndicateGovernor, OwnableUpgradeable {
     bytes32 public constant PARAM_COOLDOWN = keccak256("cooldownPeriod");
     bytes32 public constant PARAM_COLLAB_WINDOW = keccak256("collaborationWindow");
     bytes32 public constant PARAM_MAX_CO_PROPOSERS = keccak256("maxCoProposers");
+    bytes32 public constant PARAM_PROTOCOL_FEE_BPS = keccak256("protocolFeeBps");
 
     // ── Virtual accessors (implemented by SyndicateGovernor) ──
 
@@ -131,6 +132,12 @@ abstract contract GovernorParameters is ISyndicateGovernor, OwnableUpgradeable {
             revert InvalidMaxCoProposers();
         }
         _queueChange(PARAM_MAX_CO_PROPOSERS, newMaxCoProposers);
+    }
+
+    /// @inheritdoc ISyndicateGovernor
+    function setProtocolFeeBps(uint256 newProtocolFeeBps) external onlyOwner {
+        if (newProtocolFeeBps > MAX_PROTOCOL_FEE_BPS) revert InvalidProtocolFeeBps();
+        _queueChange(PARAM_PROTOCOL_FEE_BPS, newProtocolFeeBps);
     }
 
     // ── Timelock functions ──
@@ -233,6 +240,9 @@ abstract contract GovernorParameters is ISyndicateGovernor, OwnableUpgradeable {
             params.maxCoProposers = newValue;
             emit ParameterChangeFinalized(paramKey, old, newValue);
             emit MaxCoProposersUpdated(old, newValue);
+        } else if (paramKey == PARAM_PROTOCOL_FEE_BPS) {
+            _applyProtocolFeeBpsChange(newValue);
+            emit ParameterChangeFinalized(paramKey, 0, newValue);
         } else {
             revert InvalidParameterKey();
         }
@@ -268,8 +278,13 @@ abstract contract GovernorParameters is ISyndicateGovernor, OwnableUpgradeable {
             if (newValue == 0 || newValue > ABSOLUTE_MAX_CO_PROPOSERS) {
                 revert InvalidMaxCoProposers();
             }
+        } else if (paramKey == PARAM_PROTOCOL_FEE_BPS) {
+            if (newValue > MAX_PROTOCOL_FEE_BPS) revert InvalidProtocolFeeBps();
         }
     }
+
+    /// @dev Apply protocol fee change — implemented by SyndicateGovernor
+    function _applyProtocolFeeBpsChange(uint256 newValue) internal virtual;
 
     // ── Validation helpers ──
 
