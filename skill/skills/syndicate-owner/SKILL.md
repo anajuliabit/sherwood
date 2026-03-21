@@ -223,7 +223,7 @@ As vault owner, you have these emergency powers:
 |--------|---------|-------------|
 | **Pause** | `sherwood vault pause` | Halt all deposits and withdrawals immediately |
 | **Unpause** | `sherwood vault unpause` | Resume normal vault operations |
-| **Remove agent** | `sherwood vault remove-agent <pkp>` | Revoke a compromised agent's access |
+| **Remove agent** | `sherwood vault remove-agent <address>` | Revoke a compromised agent's access |
 | **Rescue ETH** | `sherwood vault rescue-eth <to> <amount>` | Recover stuck ETH from the vault |
 | **Rescue ERC-721** | `sherwood vault rescue-erc721 <token> <id> <to>` | Recover stuck NFTs from the vault |
 
