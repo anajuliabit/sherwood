@@ -81,7 +81,7 @@ const ZERO_BYTES32 =
   "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`;
 
 const BASE_ADDRESSES: ChainAddresses = {
-  factory: "0x8776F4C9b181C3AC14eB3271B69D297627d79cee",
+  factory: "0x5cBE8269CfF68D52329B8E0F9174F893627AFf0f",
   usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
   l2Registry: "0x7a019ce699e27b0ad1e5b51344a58116b9f3b9b1",
   identityRegistry: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
@@ -98,7 +98,7 @@ const BASE_ADDRESSES: ChainAddresses = {
 };
 
 const BASE_SEPOLIA_ADDRESSES: ChainAddresses = {
-  factory: "0x2efD194ADb3Db40E0e6faAe06c4e602c7a3D9199",
+  factory: "0xffB15e53360b01fEecb8952Ec4F4e809cB0D4965",
   usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
   l2Registry: "0x06eb7b85b59bc3e50fe4837be776cdd26de602cf",
   identityRegistry: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
@@ -115,7 +115,7 @@ const BASE_SEPOLIA_ADDRESSES: ChainAddresses = {
 };
 
 const ROBINHOOD_TESTNET_ADDRESSES: ChainAddresses = {
-  factory: "0xea644E2Bc0215fC73B11f52CB16a87334B0922E6",
+  factory: "0x0Fc5367463A5ae2723BAAb45F73EC4B0c21EBD3f",
   usdc: ZERO,
   l2Registry: ZERO,
   identityRegistry: ZERO,
@@ -659,8 +659,9 @@ export function formatBps(bps: bigint): string {
   return `${(Number(bps) / 100).toFixed(1)}%`;
 }
 
-/** Format vault shares to a readable number. */
-export function formatShares(raw: bigint, decimals: number = 6): string {
+/** Format vault shares to a readable number.
+ *  Shares have assetDecimals * 2 decimals due to _decimalsOffset() (12 for USDC). */
+export function formatShares(raw: bigint, decimals: number = 12): string {
   const num = Number(raw) / 10 ** decimals;
   return num.toLocaleString("en-US", {
     minimumFractionDigits: 0,
