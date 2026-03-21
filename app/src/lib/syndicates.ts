@@ -31,7 +31,7 @@ interface SubgraphSyndicate {
   active: boolean;
   totalDeposits: string;
   totalWithdrawals: string;
-  agents: { id: string; active: boolean }[];
+  agents: { id: string; agentAddress: string; agentId: string; active: boolean }[];
 }
 
 interface SyndicateMetadata {
@@ -48,6 +48,11 @@ interface SyndicateMetadata {
   };
 }
 
+export interface AgentDisplay {
+  agentAddress: string;
+  agentId: string;
+}
+
 export interface SyndicateDisplay {
   id: string;
   vault: string;
@@ -56,6 +61,7 @@ export interface SyndicateDisplay {
   strategy: string;
   tvl: string;
   agentCount: number;
+  agents: AgentDisplay[];
   status: "EXECUTING" | "IDLE" | "NO_AGENTS";
   chainId: number;
 }
@@ -140,6 +146,8 @@ async function fetchViaSubgraph(
         totalWithdrawals
         agents(where: { active: true }) {
           id
+          agentAddress
+          agentId
           active
         }
       }
@@ -232,6 +240,10 @@ async function fetchViaSubgraph(
         strategy,
         tvl: info.symbol === "USDC" ? tvlFormatted : `${tvlFormatted} ${info.symbol}`,
         agentCount,
+        agents: (s.agents || []).map((a) => ({
+          agentAddress: a.agentAddress,
+          agentId: a.agentId,
+        })),
         status,
         chainId,
       };
@@ -268,7 +280,7 @@ async function fetchViaOnChain(
 
   if (!rawSyndicates.length) return [];
 
-  // For each syndicate, multicall vault data: totalAssets, getAgentCount, asset
+  // For each syndicate, multicall vault data: totalAssets, getAgentCount, asset, getAgentAddresses
   const vaultCalls = rawSyndicates.flatMap((s) => [
     {
       address: s.vault,
@@ -285,6 +297,11 @@ async function fetchViaOnChain(
       abi: SYNDICATE_VAULT_ABI,
       functionName: "asset" as const,
     },
+    {
+      address: s.vault,
+      abi: SYNDICATE_VAULT_ABI,
+      functionName: "getAgentAddresses" as const,
+    },
   ]);
 
   const vaultResults = await client.multicall({ contracts: vaultCalls });
@@ -292,7 +309,7 @@ async function fetchViaOnChain(
   // Collect unique asset addresses for decimals + symbol lookup
   const assetAddresses = new Set<Address>();
   for (let i = 0; i < rawSyndicates.length; i++) {
-    const assetResult = vaultResults[i * 3 + 2];
+    const assetResult = vaultResults[i * 4 + 2];
     if (assetResult.status === "success" && assetResult.result) {
       assetAddresses.add(assetResult.result as Address);
     }
@@ -320,14 +337,56 @@ async function fetchViaOnChain(
     };
   }
 
+  // Batch-fetch agentConfig for all agents across all syndicates
+  const allAgentCalls: { vault: Address; agentAddress: Address }[] = [];
+  for (let i = 0; i < rawSyndicates.length; i++) {
+    const agentAddresses = (vaultResults[i * 4 + 3]?.result as Address[]) ?? [];
+    for (const addr of agentAddresses) {
+      allAgentCalls.push({ vault: rawSyndicates[i].vault, agentAddress: addr });
+    }
+  }
+
+  const agentConfigResults =
+    allAgentCalls.length > 0
+      ? await client.multicall({
+          contracts: allAgentCalls.map((c) => ({
+            address: c.vault,
+            abi: SYNDICATE_VAULT_ABI,
+            functionName: "getAgentConfig" as const,
+            args: [c.agentAddress],
+          })),
+        })
+      : [];
+
+  // Index agent configs by vault address
+  const agentsByVault: Record<string, AgentDisplay[]> = {};
+  let configIdx = 0;
+  for (let i = 0; i < rawSyndicates.length; i++) {
+    const agentAddresses = (vaultResults[i * 4 + 3]?.result as Address[]) ?? [];
+    const vaultKey = rawSyndicates[i].vault.toLowerCase();
+    agentsByVault[vaultKey] = [];
+    for (const addr of agentAddresses) {
+      const r = agentConfigResults[configIdx++];
+      const cfg = r?.status === "success"
+        ? (r.result as { agentId: bigint; agentAddress: Address; active: boolean })
+        : null;
+      if (cfg?.active) {
+        agentsByVault[vaultKey].push({
+          agentAddress: addr,
+          agentId: cfg.agentId.toString(),
+        });
+      }
+    }
+  }
+
   // Build display objects
   return Promise.all(
     rawSyndicates.map(async (s, i) => {
-      const totalAssets = (vaultResults[i * 3]?.result as bigint) ?? 0n;
+      const totalAssets = (vaultResults[i * 4]?.result as bigint) ?? 0n;
       const agentCount = Number(
-        (vaultResults[i * 3 + 1]?.result as bigint) ?? 0n,
+        (vaultResults[i * 4 + 1]?.result as bigint) ?? 0n,
       );
-      const assetAddr = (vaultResults[i * 3 + 2]?.result as Address) ?? "";
+      const assetAddr = (vaultResults[i * 4 + 2]?.result as Address) ?? "";
       const info = assetInfo[assetAddr.toLowerCase()] ?? {
         decimals: 18,
         symbol: "ETH",
@@ -359,6 +418,7 @@ async function fetchViaOnChain(
         strategy,
         tvl: info.symbol === "USDC" ? tvlFormatted : `${tvlFormatted} ${info.symbol}`,
         agentCount,
+        agents: agentsByVault[s.vault.toLowerCase()] ?? [],
         status,
         chainId,
       };
