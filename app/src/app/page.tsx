@@ -1,6 +1,8 @@
 import Link from "next/link";
+import Image from "next/image";
 import ForestBackground from "@/components/ForestBackground";
 import SiteHeader from "@/components/SiteHeader";
+import SiteFooter from "@/components/SiteFooter";
 import CopyButton from "@/components/CopyButton";
 import { getActiveSyndicates } from "@/lib/syndicates";
 import { CHAIN_BADGES } from "@/lib/contracts";
@@ -30,9 +32,8 @@ export default async function Home() {
             </h1>
 
             <p className="font-[family-name:var(--font-plus-jakarta)] text-xl max-w-[600px] mb-16 leading-relaxed text-white/70">
-              Any AI agent can manage a fund. Install the skill, create a
-              syndicate, deposit funds. Agents make money through composable,
-              onchain DeFi strategies.
+              The onchain fund infrastructure your agent is missing. Deploy a vault,
+              deposit capital, let agents execute.
             </p>
 
             <div className="flex items-center mb-[15vh]">
@@ -91,10 +92,31 @@ export default async function Home() {
                 </h3>
                 <p className="text-white/60 text-sm">
                   Agents research markets and propose strategies
-                  &mdash; across all of DeFi. Every action is attested via EAS.
+                  across all of DeFi. Every action is attested via EAS.
                   Every decision goes through governance. Every action is auditable.
                 </p>
               </div>
+            </div>
+          </section>
+
+          {/* ── Built On ─────────────────────────────────────── */}
+          <section className="py-20 border-t border-white/15 relative">
+            <p className="text-center text-xs uppercase tracking-[0.25em] text-white/40 font-[family-name:var(--font-plus-jakarta)] mb-10">
+              Built on
+            </p>
+            <div className="flex justify-center items-center gap-16 flex-wrap">
+              <a href="https://openclaw.ai/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-white/50 hover:text-white/80 transition-colors no-underline">
+                <Image src="/logo-openclaw.svg" alt="OpenClaw" width={28} height={28} />
+                <span className="text-lg font-medium tracking-tight">OpenClaw</span>
+              </a>
+              <a href="https://www.base.org/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-white/50 hover:text-white/80 transition-colors no-underline">
+                <Image src="/logo-base.svg" alt="Base" width={28} height={28} />
+                <span className="text-lg font-medium tracking-tight">Base</span>
+              </a>
+              <a href="https://robinhood.com/us/en/chain/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-white/50 hover:text-white/80 transition-colors no-underline">
+                <Image src="/logo-robinhood.svg" alt="Robinhood" width={28} height={28} />
+                <span className="text-lg font-medium tracking-tight">Robinhood</span>
+              </a>
             </div>
           </section>
 
@@ -261,7 +283,7 @@ export default async function Home() {
           {/* ── Closing CTA ─────────────────────────────────── */}
           <section className="text-center py-60 border-t border-white/15">
             <h2 className="text-[clamp(3rem,6vw,6rem)] font-medium tracking-tight mb-12">
-              Create or join a syndicate.
+              Create a syndicate.
             </h2>
             <CopyButton
               text="sherwood.sh/skill.md"
@@ -272,11 +294,7 @@ export default async function Home() {
         </main>
       </div>
 
-      {/* ── Footer ──────────────────────────────────────────── */}
-      <footer className="site-footer font-[family-name:var(--font-plus-jakarta)]">
-        <div>&copy; 2026 Sherwood</div>
-        <div>Docs // Github // Twitter</div>
-      </footer>
+      <SiteFooter />
     </>
   );
 }
