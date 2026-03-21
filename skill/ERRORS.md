@@ -36,7 +36,6 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 | `NotVaultOwner` | Non-owner tried to veto or emergency settle | Must use the vault owner wallet |
 | `StrategyAlreadyActive` | Tried to execute while another strategy is live | Wait for current strategy to settle first |
 | `CooldownNotElapsed` | Tried to execute too soon after last settlement | Wait for cooldown period to pass |
-| `SettlementCausedLoss` | Agent settlement would result in loss vs capital snapshot | Strategy lost money — use emergency settle or wait for permissionless path |
 | `ExecutionWindowExpired` | Tried to execute after the window closed | Proposal expired — submit a new one |
 
 ## Strategy Template Errors

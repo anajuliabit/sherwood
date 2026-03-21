@@ -241,8 +241,8 @@ abstract contract GovernorParameters is ISyndicateGovernor, OwnableUpgradeable {
             emit ParameterChangeFinalized(paramKey, old, newValue);
             emit MaxCoProposersUpdated(old, newValue);
         } else if (paramKey == PARAM_PROTOCOL_FEE_BPS) {
-            _applyProtocolFeeBpsChange(newValue);
-            emit ParameterChangeFinalized(paramKey, 0, newValue);
+            uint256 old = _applyProtocolFeeBpsChange(newValue);
+            emit ParameterChangeFinalized(paramKey, old, newValue);
         } else {
             revert InvalidParameterKey();
         }
@@ -284,7 +284,7 @@ abstract contract GovernorParameters is ISyndicateGovernor, OwnableUpgradeable {
     }
 
     /// @dev Apply protocol fee change — implemented by SyndicateGovernor
-    function _applyProtocolFeeBpsChange(uint256 newValue) internal virtual;
+    function _applyProtocolFeeBpsChange(uint256 newValue) internal virtual returns (uint256 old);
 
     // ── Validation helpers ──
 

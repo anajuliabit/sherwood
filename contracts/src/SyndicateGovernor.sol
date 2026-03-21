@@ -546,8 +546,8 @@ contract SyndicateGovernor is GovernorParameters, UUPSUpgradeable {
         return _protocolFeeRecipient;
     }
 
-    function _applyProtocolFeeBpsChange(uint256 newValue) internal override {
-        uint256 old = _protocolFeeBps;
+    function _applyProtocolFeeBpsChange(uint256 newValue) internal override returns (uint256 old) {
+        old = _protocolFeeBps;
         _protocolFeeBps = newValue;
         emit ProtocolFeeBpsUpdated(old, newValue);
     }
