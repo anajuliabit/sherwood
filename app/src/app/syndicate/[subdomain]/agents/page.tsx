@@ -48,7 +48,7 @@ export default async function AgentsPage({
       <div className="scanlines" style={{ opacity: 0.2 }} />
 
       <div className="layout layout-normal">
-        <main className="px-16 mx-auto w-full max-w-[1400px]">
+        <main className="px-4 md:px-8 lg:px-16 mx-auto w-full max-w-[1400px]">
           <SiteHeader />
 
           <SyndicateClient

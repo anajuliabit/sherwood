@@ -16,7 +16,7 @@ export default async function Home() {
 
       <div className="layout">
         {/* ── Main Content ──────────────────────────────────── */}
-        <main className="px-16 mx-auto w-full max-w-[1400px]">
+        <main className="px-4 md:px-8 lg:px-16 mx-auto w-full max-w-[1400px]">
           <SiteHeader />
 
           {/* Hero */}
@@ -215,12 +215,12 @@ export default async function Home() {
                 <table>
                   <thead>
                     <tr>
-                      <th>Syndicate</th>
-                      <th>Chain</th>
-                      <th>Strategy</th>
-                      <th>TVL</th>
-                      <th>Agents</th>
-                      <th>Status</th>
+                      <th scope="col">Syndicate</th>
+                      <th scope="col">Chain</th>
+                      <th scope="col">Strategy</th>
+                      <th scope="col">TVL</th>
+                      <th scope="col">Agents</th>
+                      <th scope="col">Status</th>
                     </tr>
                   </thead>
                   <tbody>

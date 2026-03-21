@@ -10,9 +10,20 @@ interface DepositButtonProps {
   vaultName: string;
   openDeposits: boolean;
   paused: boolean;
+  assetAddress: Address;
+  assetDecimals: number;
+  assetSymbol: string;
 }
 
-export default function DepositButton({ vault, vaultName, openDeposits, paused }: DepositButtonProps) {
+export default function DepositButton({
+  vault,
+  vaultName,
+  openDeposits,
+  paused,
+  assetAddress,
+  assetDecimals,
+  assetSymbol,
+}: DepositButtonProps) {
   const { isConnected } = useAccount();
   const [showDeposit, setShowDeposit] = useState(false);
 
@@ -33,6 +44,9 @@ export default function DepositButton({ vault, vaultName, openDeposits, paused }
           vaultName={vaultName}
           openDeposits={openDeposits}
           paused={paused}
+          assetAddress={assetAddress}
+          assetDecimals={assetDecimals}
+          assetSymbol={assetSymbol}
           onClose={() => setShowDeposit(false)}
         />
       )}

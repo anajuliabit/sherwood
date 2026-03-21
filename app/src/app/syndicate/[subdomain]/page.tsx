@@ -67,7 +67,7 @@ export default async function SyndicateDetailPage({
       <div className="scanlines" style={{ opacity: 0.2 }} />
 
       <div className="layout layout-normal">
-        <main className="px-16 mx-auto w-full max-w-[1400px]">
+        <main className="px-4 md:px-8 lg:px-16 mx-auto w-full max-w-[1400px]">
           <SiteHeader />
 
           {/* Client-side header with wallet integration */}
@@ -114,6 +114,9 @@ export default async function SyndicateDetailPage({
               vaultName={name}
               openDeposits={data.openDeposits}
               paused={data.paused}
+              assetAddress={data.assetAddress}
+              assetDecimals={data.assetDecimals}
+              assetSymbol={data.assetSymbol}
             />
           </div>
 

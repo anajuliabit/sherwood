@@ -15,9 +15,7 @@ import {
   ERC20_ABI,
   formatAsset,
 } from "./contracts";
-
-const PINATA_GATEWAY =
-  process.env.PINATA_GATEWAY || "https://sherwood.mypinata.cloud";
+import { fetchMetadata } from "./syndicate-data";
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -33,20 +31,6 @@ interface SubgraphSyndicate {
   totalWithdrawals: string;
   agents: { id: string; agentAddress: string; agentId: string; active: boolean }[];
   proposals: { proposer: string; finalPnl: string | null; state: string }[];
-}
-
-interface SyndicateMetadata {
-  name: string;
-  description: string;
-  strategies: {
-    id: string;
-    name: string;
-    protocols: string[];
-    riskLevel: string;
-  }[];
-  terms: {
-    ragequitEnabled: boolean;
-  };
 }
 
 export interface AgentDisplay {
@@ -93,32 +77,6 @@ async function querySubgraph<T>(
 
     if (result.errors?.length || !result.data) return null;
     return result.data;
-  } catch {
-    return null;
-  }
-}
-
-// ── IPFS Metadata ──────────────────────────────────────────
-
-async function fetchMetadata(
-  ipfsURI: string,
-): Promise<SyndicateMetadata | null> {
-  try {
-    let cid: string;
-    if (ipfsURI.startsWith("ipfs://")) {
-      cid = ipfsURI.slice(7);
-    } else if (ipfsURI.startsWith("Qm") || ipfsURI.startsWith("bafy")) {
-      cid = ipfsURI;
-    } else {
-      return null;
-    }
-
-    const response = await fetch(`${PINATA_GATEWAY}/ipfs/${cid}`, {
-      next: { revalidate: 300 },
-    });
-
-    if (!response.ok) return null;
-    return (await response.json()) as SyndicateMetadata;
   } catch {
     return null;
   }

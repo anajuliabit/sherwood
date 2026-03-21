@@ -299,7 +299,7 @@ export default async function ProposalsPage({
       <div className="scanlines" style={{ opacity: 0.2 }} />
 
       <div className="layout layout-normal">
-        <main className="px-16 mx-auto w-full max-w-[1400px]">
+        <main className="px-4 md:px-8 lg:px-16 mx-auto w-full max-w-[1400px]">
           <SiteHeader />
 
           <SyndicateClient
@@ -381,11 +381,19 @@ export default async function ProposalsPage({
           <div className="grid-dashboard" style={{ marginTop: "1.5rem" }}>
             <div style={{ position: "relative" }}>
               {isMock && <MockBadge />}
-              <ProposalHistory proposals={governor.proposals} />
+              <ProposalHistory
+                proposals={governor.proposals}
+                assetDecimals={data.assetDecimals}
+                assetSymbol={data.assetSymbol}
+              />
             </div>
             <div style={{ position: "relative" }}>
               {isMock && <MockBadge />}
-              <AgentStats proposals={governor.proposals} />
+              <AgentStats
+                proposals={governor.proposals}
+                assetDecimals={data.assetDecimals}
+                assetSymbol={data.assetSymbol}
+              />
             </div>
           </div>
         </main>

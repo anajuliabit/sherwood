@@ -137,7 +137,7 @@ export interface SyndicatePageData {
 const PINATA_GATEWAY =
   process.env.PINATA_GATEWAY || "https://sherwood.mypinata.cloud";
 
-async function fetchMetadata(
+export async function fetchMetadata(
   ipfsURI: string,
 ): Promise<SyndicateMetadata | null> {
   try {

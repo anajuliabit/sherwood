@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { type Address } from "viem";
 import { truncateAddress, CHAIN_BADGES } from "@/lib/contracts";
@@ -18,20 +19,29 @@ interface SyndicateHeaderProps {
 }
 
 function InlineCopy({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    navigator.clipboard.writeText(value);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
   return (
     <button
-      onClick={() => navigator.clipboard.writeText(value)}
+      onClick={handleCopy}
+      aria-label="Copy to clipboard"
       style={{
         background: "none",
         border: "none",
-        color: "rgba(255,255,255,0.3)",
+        color: copied ? "var(--color-accent, #4ade80)" : "rgba(255,255,255,0.3)",
         cursor: "pointer",
         padding: 0,
         fontSize: "10px",
       }}
       title="Copy"
     >
-      [c]
+      {copied ? "\u2713" : "[c]"}
     </button>
   );
 }
@@ -91,18 +101,21 @@ export default function SyndicateHeader({
         <Link
           href={`/syndicate/${subdomain}`}
           className={`syndicate-tab ${activeTab === "vault" ? "syndicate-tab-active" : ""}`}
+          aria-current={activeTab === "vault" ? "page" : undefined}
         >
           Vault
         </Link>
         <Link
           href={`/syndicate/${subdomain}/proposals`}
           className={`syndicate-tab ${activeTab === "proposals" ? "syndicate-tab-active" : ""}`}
+          aria-current={activeTab === "proposals" ? "page" : undefined}
         >
           Proposals
         </Link>
         <Link
           href={`/syndicate/${subdomain}/agents`}
           className={`syndicate-tab ${activeTab === "agents" ? "syndicate-tab-active" : ""}`}
+          aria-current={activeTab === "agents" ? "page" : undefined}
         >
           Agents
         </Link>

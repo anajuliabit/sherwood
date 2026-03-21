@@ -1,9 +1,11 @@
 import { type Address } from "viem";
 import { type ProposalData, ProposalState } from "@/lib/governor-data";
-import { truncateAddress, formatUSDC, formatBps } from "@/lib/contracts";
+import { truncateAddress, formatAsset, formatBps } from "@/lib/contracts";
 
 interface AgentStatsProps {
   proposals: ProposalData[];
+  assetDecimals: number;
+  assetSymbol: string;
 }
 
 interface AgentStat {
@@ -15,7 +17,12 @@ interface AgentStat {
   avgFeeBps: number;
 }
 
-export default function AgentStats({ proposals }: AgentStatsProps) {
+export default function AgentStats({
+  proposals,
+  assetDecimals,
+  assetSymbol,
+}: AgentStatsProps) {
+  const isUSD = assetSymbol === "USDC" || assetSymbol === "USDT";
   const statsMap = new Map<string, AgentStat>();
 
   for (const p of proposals) {
@@ -87,12 +94,12 @@ export default function AgentStats({ proposals }: AgentStatsProps) {
         <table className="log-table">
           <thead>
             <tr>
-              <th>Agent</th>
-              <th>Proposals</th>
-              <th>Settled</th>
-              <th>Rejected</th>
-              <th>Total P&L</th>
-              <th>Avg Fee</th>
+              <th scope="col">Agent</th>
+              <th scope="col">Proposals</th>
+              <th scope="col">Settled</th>
+              <th scope="col">Rejected</th>
+              <th scope="col">Total P&L</th>
+              <th scope="col">Avg Fee</th>
             </tr>
           </thead>
           <tbody>
@@ -100,9 +107,11 @@ export default function AgentStats({ proposals }: AgentStatsProps) {
               const pnlPositive = stat.totalPnl > 0n;
               const pnlNegative = stat.totalPnl < 0n;
               const abs = stat.totalPnl < 0n ? -stat.totalPnl : stat.totalPnl;
+              const formatted = formatAsset(abs, assetDecimals, isUSD ? "USD" : undefined);
+              const display = isUSD ? formatted : `${formatted} ${assetSymbol}`;
               const pnlText = stat.totalPnl === 0n
-                ? "—"
-                : `${pnlPositive ? "+" : "-"}${formatUSDC(abs)}`;
+                ? "\u2014"
+                : `${pnlPositive ? "+" : "-"}${display}`;
               const pnlColor = pnlPositive
                 ? "var(--color-accent)"
                 : pnlNegative

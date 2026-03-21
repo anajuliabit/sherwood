@@ -75,14 +75,14 @@ export default function LeaderboardTabs({ syndicates }: LeaderboardTabsProps) {
             <table>
               <thead>
                 <tr>
-                  <th style={{ width: "40px" }}>Rank</th>
-                  <th>Syndicate</th>
-                  <th>Strategy</th>
-                  <th>TVL</th>
-                  <th>Agents</th>
-                  <th>Status</th>
-                  <th>Chain</th>
-                  <th style={{ textAlign: "right" }}>Action</th>
+                  <th scope="col" style={{ width: "40px" }}>Rank</th>
+                  <th scope="col">Syndicate</th>
+                  <th scope="col">Strategy</th>
+                  <th scope="col">TVL</th>
+                  <th scope="col">Agents</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Chain</th>
+                  <th scope="col" style={{ textAlign: "right" }}>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -185,13 +185,13 @@ export default function LeaderboardTabs({ syndicates }: LeaderboardTabsProps) {
             <table>
               <thead>
                 <tr>
-                  <th style={{ width: "40px" }}>#</th>
-                  <th>Agent</th>
-                  <th>Syndicate</th>
-                  <th>Strategies</th>
-                  <th>P&L</th>
-                  <th>Chain</th>
-                  <th style={{ textAlign: "right" }}>Action</th>
+                  <th scope="col" style={{ width: "40px" }}>#</th>
+                  <th scope="col">Agent</th>
+                  <th scope="col">Syndicate</th>
+                  <th scope="col">Strategies</th>
+                  <th scope="col">P&L</th>
+                  <th scope="col">Chain</th>
+                  <th scope="col" style={{ textAlign: "right" }}>Action</th>
                 </tr>
               </thead>
               <tbody>

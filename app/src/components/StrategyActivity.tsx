@@ -117,11 +117,11 @@ export default function StrategyActivity({
         <table className="log-table">
           <thead>
             <tr>
-              <th>Time</th>
-              <th>Event</th>
-              <th>Actor</th>
-              <th>Amount</th>
-              <th>Details</th>
+              <th scope="col">Time</th>
+              <th scope="col">Event</th>
+              <th scope="col">Actor</th>
+              <th scope="col">Amount</th>
+              <th scope="col">Details</th>
             </tr>
           </thead>
           <tbody>
