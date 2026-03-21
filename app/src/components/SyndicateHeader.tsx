@@ -21,8 +21,20 @@ interface SyndicateHeaderProps {
 function InlineCopy({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
 
-  function handleCopy() {
-    navigator.clipboard.writeText(value);
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch {
+      // Fallback for non-secure contexts
+      const textarea = document.createElement("textarea");
+      textarea.value = value;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }
@@ -55,7 +67,7 @@ export default function SyndicateHeader({
   chainId,
   activeTab,
 }: SyndicateHeaderProps) {
-  const badge = CHAIN_BADGES[chainId] || CHAIN_BADGES[84532];
+  const badge = CHAIN_BADGES[chainId] || CHAIN_BADGES[8453];
 
   return (
     <div className="agent-header" style={{ flexDirection: "column", alignItems: "stretch", gap: "1rem" }}>

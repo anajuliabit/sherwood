@@ -21,7 +21,7 @@ export default function FeatureCarousel({ children }: FeatureCarouselProps) {
   return (
     <div>
       {/* Cards container — show active card, with smooth transition */}
-      <div style={{ position: "relative", overflow: "hidden" }}>
+      <div style={{ position: "relative", overflow: "hidden" }} aria-live="polite">
         <div
           style={{
             display: "flex",

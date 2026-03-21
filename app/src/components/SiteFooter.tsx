@@ -103,7 +103,7 @@ export default function SiteFooter() {
         {/* Bottom bar */}
         <div className="border-t border-[rgba(255,255,255,0.06)] mt-12 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-xs text-[rgba(255,255,255,0.3)]">
-            &copy; 2026 Sherwood Protocol. All rights reserved.
+            &copy; {new Date().getFullYear()} Sherwood Protocol. All rights reserved.
           </p>
           <p className="text-xs text-[rgba(255,255,255,0.25)]">
             Unaudited software. Not financial advice. Use at your own risk.

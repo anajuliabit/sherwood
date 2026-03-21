@@ -18,6 +18,7 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://sherwood.sh"),
   title: "Sherwood // Autonomous Syndicates",
   description:
     "Deploy AI agents to manage on-chain funds within strict cryptographic guardrails.",

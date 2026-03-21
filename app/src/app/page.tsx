@@ -263,7 +263,7 @@ export default async function Home() {
                   </thead>
                   <tbody>
                     {syndicates.map((s) => {
-                      const badge = CHAIN_BADGES[s.chainId] || CHAIN_BADGES[84532];
+                      const badge = CHAIN_BADGES[s.chainId] || CHAIN_BADGES[8453];
                       return (
                         <tr key={`${s.chainId}-${s.id}`} className="syndicate-row">
                           <td>

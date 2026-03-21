@@ -140,7 +140,8 @@ export default function DepositModal({
       },
       {
         onError: (err) => {
-          setErrorMsg(err.message);
+          const msg = (err as any).shortMessage || "Transaction was rejected or reverted.";
+          setErrorMsg(msg);
           setStep("error");
         },
       },
@@ -159,7 +160,8 @@ export default function DepositModal({
       },
       {
         onError: (err) => {
-          setErrorMsg(err.message);
+          const msg = (err as any).shortMessage || "Transaction was rejected or reverted.";
+          setErrorMsg(msg);
           setStep("error");
         },
       },
@@ -186,9 +188,6 @@ export default function DepositModal({
       aria-modal="true"
       aria-labelledby="deposit-modal-title"
       onClick={onClose}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") onClose();
-      }}
     >
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="panel-title">
@@ -259,15 +258,27 @@ export default function DepositModal({
             </div>
             <div
               style={{
+                fontSize: "12px",
+                color: "rgba(255,255,255,0.5)",
+                marginBottom: "0.5rem",
+              }}
+            >
+              {errorMsg}
+            </div>
+            <details
+              style={{
                 fontSize: "10px",
-                color: "rgba(255,255,255,0.4)",
+                color: "rgba(255,255,255,0.3)",
                 maxHeight: "100px",
                 overflow: "auto",
                 wordBreak: "break-all",
               }}
             >
+              <summary style={{ cursor: "pointer", marginBottom: "0.25rem" }}>
+                Technical details
+              </summary>
               {errorMsg}
-            </div>
+            </details>
             <button
               className="btn-follow"
               style={{ marginTop: "1rem" }}
@@ -299,7 +310,10 @@ export default function DepositModal({
                 placeholder="0.00"
                 value={amount}
                 onChange={(e) => {
-                  const val = e.target.value.replace(/[^0-9.]/g, "");
+                  let val = e.target.value.replace(/[^0-9.]/g, "");
+                  // Prevent multiple decimal points
+                  const parts = val.split(".");
+                  if (parts.length > 2) val = parts[0] + "." + parts.slice(1).join("");
                   setAmount(val);
                 }}
                 className="deposit-input"
