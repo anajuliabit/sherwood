@@ -9,6 +9,7 @@ import VaultOverview from "@/components/VaultOverview";
 import AgentRoster from "@/components/AgentRoster";
 import AttestationTimeline from "@/components/AttestationTimeline";
 import LiveFeed from "@/components/LiveFeed";
+import StrategyActivity from "@/components/StrategyActivity";
 import { resolveSyndicateBySubdomain } from "@/lib/syndicate-data";
 
 
@@ -17,13 +18,6 @@ const MOCK_EQUITY_CURVE = [
   3.2, 3.25, 3.18, 3.3, 3.42, 3.38, 3.45, 3.6, 3.55, 3.7, 3.82, 3.75, 3.8,
   3.9, 4.05, 3.98, 4.12, 4.1, 4.05, 4.15, 4.22, 4.18, 4.2, 4.25, 4.32, 4.28,
   4.35, 4.4, 4.38, 4.2,
-];
-
-const MOCK_TRADES = [
-  { timestamp: "14:22:01", asset: "WETH/USDC", side: "LONG" as const, size: "14.2 ETH", pnl: "+$1,420", pnlPositive: true, status: "CLOSED" as const },
-  { timestamp: "13:58:12", asset: "ARB/USDC", side: "SHORT" as const, size: "12,000 ARB", pnl: "+$210", pnlPositive: true, status: "CLOSED" as const },
-  { timestamp: "12:44:55", asset: "LINK/USDC", side: "LONG" as const, size: "400 LINK", pnl: "-$84", pnlPositive: false, status: "CLOSED" as const },
-  { timestamp: "11:10:04", asset: "SOL/USDC", side: "LONG" as const, size: "80 SOL", pnl: "--", pnlPositive: true, status: "OPEN" as const },
 ];
 
 export async function generateMetadata({
@@ -152,7 +146,7 @@ export default async function SyndicateDetailPage({
             <LiveFeed groupId={data.xmtpGroupId ?? undefined} addressNames={addressNames} />
           </div>
 
-          {/* Mock sections (labeled) — will be replaced with real data */}
+          {/* Equity curve (mock) + Strategy activity (real) */}
           <div className="grid-dashboard" style={{ marginTop: 0 }}>
             <div className="panel">
               <div className="panel-title">
@@ -164,63 +158,11 @@ export default async function SyndicateDetailPage({
               <EquityCurveChart data={MOCK_EQUITY_CURVE} hwm={data.display.tvl} />
             </div>
 
-            <div className="panel">
-              <div className="panel-title">
-                <span>Trade History Log</span>
-                <span style={{ color: "rgba(255,255,255,0.2)", fontSize: "9px" }}>
-                  MOCK DATA
-                </span>
-              </div>
-              <table className="log-table">
-                <thead>
-                  <tr>
-                    <th>Timestamp</th>
-                    <th>Asset</th>
-                    <th>Side</th>
-                    <th>Size</th>
-                    <th>PnL</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {MOCK_TRADES.map((trade, i) => (
-                    <tr key={i}>
-                      <td>{trade.timestamp}</td>
-                      <td>{trade.asset}</td>
-                      <td
-                        style={{
-                          color:
-                            trade.side === "LONG"
-                              ? "var(--color-accent)"
-                              : "#ff4d4d",
-                        }}
-                      >
-                        {trade.side}
-                      </td>
-                      <td>{trade.size}</td>
-                      <td
-                        style={{
-                          color: trade.pnlPositive
-                            ? "var(--color-accent)"
-                            : "#ff4d4d",
-                        }}
-                      >
-                        {trade.pnl}
-                      </td>
-                      <td
-                        style={
-                          trade.status === "OPEN"
-                            ? { color: "var(--color-accent)" }
-                            : undefined
-                        }
-                      >
-                        [{trade.status}]
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <StrategyActivity
+              activity={data.activity}
+              assetDecimals={data.assetDecimals}
+              assetSymbol={data.assetSymbol}
+            />
           </div>
         </main>
       </div>

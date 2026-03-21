@@ -26,6 +26,23 @@ import {
 
 // ── Types ──────────────────────────────────────────────────
 
+export type ActivityEventType =
+  | "deposit"
+  | "withdrawal"
+  | "executed"
+  | "settled"
+  | "cancelled";
+
+export interface ActivityEvent {
+  type: ActivityEventType;
+  actor: string;
+  amount: bigint;
+  timestamp: bigint;
+  txHash: string;
+  proposalId?: bigint;
+  pnl?: bigint;
+}
+
 export interface AgentIdentity {
   name: string;
   description: string;
@@ -100,6 +117,9 @@ export interface SyndicatePageData {
 
   // EAS attestations
   attestations: AttestationItem[];
+
+  // Strategy activity feed
+  activity: ActivityEvent[];
 
   // Formatted display values
   display: {
@@ -371,10 +391,11 @@ async function resolveOnChain(
   }
 
   // Step 4: Parallel off-chain reads
-  const [metadata, xmtpGroupId, attestations] = await Promise.all([
+  const [metadata, xmtpGroupId, attestations, activity] = await Promise.all([
     fetchMetadata(metadataURI),
     fetchXmtpGroupId(chainId, subdomain, addresses.l2Registry),
     fetchSyndicateAttestations(creator, syndicateId, chainId),
+    fetchStrategyActivity(entry.subgraphUrl, syndicateId.toString()),
   ]);
 
   // Format display values based on asset
@@ -415,6 +436,7 @@ async function resolveOnChain(
     metadata,
     xmtpGroupId,
     attestations,
+    activity,
     display: {
       tvl: isUSD ? tvlFormatted : `${tvlFormatted} ${assetSymbol}`,
       totalDeposited: isUSD
@@ -491,6 +513,132 @@ async function parseAgentMetadata(uri: string): Promise<AgentIdentity | null> {
     };
   } catch {
     return null;
+  }
+}
+
+// ── Strategy activity feed ─────────────────────────────────
+
+async function fetchStrategyActivity(
+  subgraphUrl: string | null,
+  syndicateId: string,
+): Promise<ActivityEvent[]> {
+  if (!subgraphUrl) return [];
+
+  try {
+    const response = await fetch(subgraphUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: `{
+          deposits(
+            where: { syndicate: "${syndicateId}" }
+            orderBy: timestamp
+            orderDirection: desc
+            first: 20
+          ) {
+            sender
+            assets
+            timestamp
+            txHash
+          }
+          withdrawals(
+            where: { syndicate: "${syndicateId}" }
+            orderBy: timestamp
+            orderDirection: desc
+            first: 20
+          ) {
+            owner
+            assets
+            timestamp
+            txHash
+          }
+          proposals(
+            where: { syndicate: "${syndicateId}", state_in: ["Executed", "Settled", "Cancelled"] }
+            orderBy: createdAt
+            orderDirection: desc
+            first: 20
+          ) {
+            id
+            proposer
+            capitalSnapshot
+            finalPnl
+            state
+            executedAt
+            settledAt
+            txHash
+          }
+        }`,
+      }),
+      next: { revalidate: 60 },
+    });
+
+    if (!response.ok) return [];
+    const result = await response.json();
+    const data = result?.data;
+    if (!data) return [];
+
+    const events: ActivityEvent[] = [];
+
+    for (const d of data.deposits ?? []) {
+      events.push({
+        type: "deposit",
+        actor: d.sender,
+        amount: BigInt(d.assets),
+        timestamp: BigInt(d.timestamp),
+        txHash: d.txHash,
+      });
+    }
+
+    for (const w of data.withdrawals ?? []) {
+      events.push({
+        type: "withdrawal",
+        actor: w.owner,
+        amount: BigInt(w.assets),
+        timestamp: BigInt(w.timestamp),
+        txHash: w.txHash,
+      });
+    }
+
+    for (const p of data.proposals ?? []) {
+      const state = p.state as string;
+      if (state === "Executed" && p.executedAt) {
+        events.push({
+          type: "executed",
+          actor: p.proposer,
+          amount: p.capitalSnapshot ? BigInt(p.capitalSnapshot) : 0n,
+          timestamp: BigInt(p.executedAt),
+          txHash: p.txHash,
+          proposalId: BigInt(p.id),
+        });
+      }
+      if (state === "Settled" && p.settledAt) {
+        events.push({
+          type: "settled",
+          actor: p.proposer,
+          amount: p.capitalSnapshot ? BigInt(p.capitalSnapshot) : 0n,
+          timestamp: BigInt(p.settledAt),
+          txHash: p.txHash,
+          proposalId: BigInt(p.id),
+          pnl: p.finalPnl != null ? BigInt(p.finalPnl) : undefined,
+        });
+      }
+      if (state === "Cancelled") {
+        events.push({
+          type: "cancelled",
+          actor: p.proposer,
+          amount: 0n,
+          timestamp: BigInt(p.executedAt ?? p.settledAt ?? "0"),
+          txHash: p.txHash,
+          proposalId: BigInt(p.id),
+        });
+      }
+    }
+
+    // Sort by timestamp desc, take 20 most recent
+    events.sort((a, b) => (b.timestamp > a.timestamp ? 1 : b.timestamp < a.timestamp ? -1 : 0));
+    return events.slice(0, 20);
+  } catch {
+    return [];
   }
 }
 
