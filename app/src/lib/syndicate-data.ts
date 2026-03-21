@@ -121,6 +121,9 @@ export interface SyndicatePageData {
   // Strategy activity feed
   activity: ActivityEvent[];
 
+  // Equity curve (30 daily data points)
+  equityCurve: number[];
+
   // Formatted display values
   display: {
     tvl: string;
@@ -391,11 +394,12 @@ async function resolveOnChain(
   }
 
   // Step 4: Parallel off-chain reads
-  const [metadata, xmtpGroupId, attestations, activity] = await Promise.all([
+  const [metadata, xmtpGroupId, attestations, activity, equityCurve] = await Promise.all([
     fetchMetadata(metadataURI),
     fetchXmtpGroupId(chainId, subdomain, addresses.l2Registry),
     fetchSyndicateAttestations(creator, syndicateId, chainId),
     fetchStrategyActivity(entry.subgraphUrl, syndicateId.toString()),
+    fetchEquityCurve(entry.subgraphUrl, syndicateId.toString(), assetDecimals, totalAssets),
   ]);
 
   // Format display values based on asset
@@ -437,6 +441,7 @@ async function resolveOnChain(
     xmtpGroupId,
     attestations,
     activity,
+    equityCurve,
     display: {
       tvl: isUSD ? tvlFormatted : `${tvlFormatted} ${assetSymbol}`,
       totalDeposited: isUSD
@@ -639,6 +644,118 @@ async function fetchStrategyActivity(
     return events.slice(0, 20);
   } catch {
     return [];
+  }
+}
+
+// ── Equity curve ──────────────────────────────────────────
+
+async function fetchEquityCurve(
+  subgraphUrl: string | null,
+  syndicateId: string,
+  assetDecimals: number,
+  currentTotalAssets: bigint,
+): Promise<number[]> {
+  const currentTVL = Number(currentTotalAssets) / 10 ** assetDecimals;
+
+  if (!subgraphUrl) return [currentTVL];
+
+  try {
+    const response = await fetch(subgraphUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: `{
+          deposits(
+            where: { syndicate: "${syndicateId}" }
+            orderBy: timestamp
+            orderDirection: asc
+            first: 1000
+          ) {
+            assets
+            timestamp
+          }
+          withdrawals(
+            where: { syndicate: "${syndicateId}" }
+            orderBy: timestamp
+            orderDirection: asc
+            first: 1000
+          ) {
+            assets
+            timestamp
+          }
+          proposals(
+            where: { syndicate: "${syndicateId}", state: "Settled" }
+            orderBy: settledAt
+            orderDirection: asc
+            first: 1000
+          ) {
+            finalPnl
+            settledAt
+          }
+        }`,
+      }),
+      next: { revalidate: 60 },
+    });
+
+    if (!response.ok) return [currentTVL];
+    const result = await response.json();
+    const data = result?.data;
+    if (!data) return [currentTVL];
+
+    // Build chronological event list
+    const events: { timestamp: number; delta: bigint }[] = [];
+
+    for (const d of data.deposits ?? []) {
+      events.push({ timestamp: Number(d.timestamp), delta: BigInt(d.assets) });
+    }
+    for (const w of data.withdrawals ?? []) {
+      events.push({ timestamp: Number(w.timestamp), delta: -BigInt(w.assets) });
+    }
+    for (const p of data.proposals ?? []) {
+      if (p.finalPnl != null && p.settledAt) {
+        events.push({ timestamp: Number(p.settledAt), delta: BigInt(p.finalPnl) });
+      }
+    }
+
+    if (events.length === 0) return [currentTVL];
+
+    events.sort((a, b) => a.timestamp - b.timestamp);
+
+    // Compute cumulative TVL at each event
+    let runningTVL = 0n;
+    const tvlPoints: { timestamp: number; tvl: bigint }[] = [];
+    for (const evt of events) {
+      runningTVL += evt.delta;
+      if (runningTVL < 0n) runningTVL = 0n;
+      tvlPoints.push({ timestamp: evt.timestamp, tvl: runningTVL });
+    }
+
+    // Sample into 30 daily buckets
+    const now = Math.floor(Date.now() / 1000);
+    const DAY = 86400;
+    const days = 30;
+    const curve: number[] = [];
+
+    for (let i = days - 1; i >= 0; i--) {
+      const dayEnd = now - i * DAY;
+      // Find the last TVL point at or before this day's end
+      let dayTVL = 0n;
+      for (const p of tvlPoints) {
+        if (p.timestamp <= dayEnd) {
+          dayTVL = p.tvl;
+        } else {
+          break;
+        }
+      }
+      curve.push(Number(dayTVL) / 10 ** assetDecimals);
+    }
+
+    // Replace last point with actual on-chain TVL for accuracy
+    curve[curve.length - 1] = currentTVL;
+
+    return curve;
+  } catch {
+    return [currentTVL];
   }
 }
 

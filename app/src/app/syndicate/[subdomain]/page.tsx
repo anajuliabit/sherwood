@@ -12,14 +12,6 @@ import LiveFeed from "@/components/LiveFeed";
 import StrategyActivity from "@/components/StrategyActivity";
 import { resolveSyndicateBySubdomain } from "@/lib/syndicate-data";
 
-
-// Mock equity curve data — will be replaced when execution indexing is available
-const MOCK_EQUITY_CURVE = [
-  3.2, 3.25, 3.18, 3.3, 3.42, 3.38, 3.45, 3.6, 3.55, 3.7, 3.82, 3.75, 3.8,
-  3.9, 4.05, 3.98, 4.12, 4.1, 4.05, 4.15, 4.22, 4.18, 4.2, 4.25, 4.32, 4.28,
-  4.35, 4.4, 4.38, 4.2,
-];
-
 export async function generateMetadata({
   params,
 }: {
@@ -146,16 +138,10 @@ export default async function SyndicateDetailPage({
             <LiveFeed groupId={data.xmtpGroupId ?? undefined} addressNames={addressNames} />
           </div>
 
-          {/* Equity curve (mock) + Strategy activity (real) */}
+          {/* Equity curve + Strategy activity */}
           <div className="grid-dashboard" style={{ marginTop: 0 }}>
             <div className="panel">
-              <div className="panel-title">
-                <span>Equity Curve (30d)</span>
-                <span style={{ color: "rgba(255,255,255,0.2)", fontSize: "9px" }}>
-                  MOCK DATA
-                </span>
-              </div>
-              <EquityCurveChart data={MOCK_EQUITY_CURVE} hwm={data.display.tvl} />
+              <EquityCurveChart data={data.equityCurve} hwm={data.display.tvl} />
             </div>
 
             <StrategyActivity
