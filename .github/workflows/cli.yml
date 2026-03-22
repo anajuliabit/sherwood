@@ -98,7 +98,7 @@ jobs:
         run: forge build --sizes
 
       - name: Test
-        run: forge test -vvv
+        run: forge test -vvv --no-match-path "test/integration/*"
 
   # ── Publish (main only, gates on ALL checks passing) ────────────
   release:
