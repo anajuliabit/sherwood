@@ -58,3 +58,37 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 |-------|-------|-----|
 | `InsufficientCreationFee` | Didn't send enough creation fee token | Check `creationFee()` and approve the fee token |
 | `CreationFeeTransferFailed` | Fee token transfer failed | Ensure sufficient balance and approval |
+
+## XMTP / Chat Errors
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `Conversation not found` | Stale XMTP installation — group welcome targeted old KeyPackage | Revoke stale installations, get re-added (see steps below) |
+| `numSynced: 0` after sync | Welcome encrypted for wrong installation (db was nuked/reinstalled) | Same as above — revoke + re-add |
+| `PRAGMA key or salt has incorrect value` | DB encryption key mismatch (`~/.xmtp/.env` was overwritten) | Delete `~/.xmtp/xmtp-db*` files (keep `.env`), re-run any chat command, then get re-added |
+| `Association error: Missing identity update` | Wallet never registered on XMTP production | Non-fatal — run `sherwood chat <name> --chain base` to force registration |
+
+### Stale installation fix (most common XMTP issue)
+
+```bash
+# 1. Find XMTP CLI bundled with sherwood
+XMTP_CLI=$(find /usr/local/lib/node_modules/@sherwoodagent -name "run.js" -path "*xmtp*cli*" | head -1)
+
+# 2. Get your current installation ID
+node $XMTP_CLI client info --log-level off --env production
+
+# 3. Check all installations — if >1 exists, stale ones must go
+node $XMTP_CLI inbox-states <inbox-id> --log-level off --env production
+
+# 4. Revoke stale installations (keep only current)
+node $XMTP_CLI revoke-installations <inbox-id> -i <stale-id> --force --env production
+
+# 5. Creator removes and re-adds you
+#    sherwood chat <name> add <your-address> --chain base
+
+# 6. Sync + clear stale group cache
+node $XMTP_CLI conversations sync-all --env production --log-level off
+# Edit ~/.sherwood/config.json → set "groupCache": {}
+```
+
+**Golden rule:** Never delete `~/.xmtp/` after being added to a group. Reinstalling the CLI (`npm i -g`) does NOT touch `~/.xmtp/`. If you must reset, only delete `xmtp-db*` files — never `.env` (contains your db encryption key). After any db reset you must get re-added to the group.

@@ -722,15 +722,17 @@ syndicate
     try {
       let creatorAddress: Address;
       let subdomain: string;
+      let syndicateVault: Address;
 
       if (opts.subdomain) {
         const syndicateInfo = await resolveSyndicate(opts.subdomain);
         creatorAddress = syndicateInfo.creator;
         subdomain = opts.subdomain;
+        syndicateVault = syndicateInfo.vault as Address;
       } else {
         resolveVault(opts);
-        const vaultAddress = vaultLib.getVaultAddress();
-        const syndicateInfo = await resolveVaultSyndicate(vaultAddress);
+        syndicateVault = vaultLib.getVaultAddress();
+        const syndicateInfo = await resolveVaultSyndicate(syndicateVault);
         creatorAddress = syndicateInfo.creator;
         subdomain = syndicateInfo.subdomain;
       }
@@ -748,10 +750,15 @@ syndicate
         easLib.queryApprovals(creatorAddress),
       ]);
 
-      // Filter out agents that have already been approved
-      const approvedAgentIds = new Set(approvals.map((a) => a.decoded.agentId.toString()));
+      // Filter out agents that have already been approved for the same vault
+      const approvedKeys = new Set(
+        approvals
+          .filter((a) => a.decoded.vault.toLowerCase() === syndicateVault.toLowerCase())
+          .map((a) => a.decoded.agentId.toString()),
+      );
       const requests = allRequests.filter(
-        (r) => !approvedAgentIds.has(r.decoded.agentId.toString()),
+        (r) => !approvedKeys.has(r.decoded.agentId.toString())
+          && r.decoded.vault.toLowerCase() === syndicateVault.toLowerCase(),
       );
 
       spinner.stop();
