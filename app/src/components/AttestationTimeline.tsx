@@ -5,6 +5,8 @@ interface AttestationTimelineProps {
   attestations: AttestationItem[];
   /** Map of agentId (string) → display name from ERC-8004 identity */
   agentNames?: Record<string, string>;
+  /** Map of lowercase address → display name for attester resolution */
+  addressNames?: Record<string, string>;
 }
 
 function formatTime(unix: number): string {
@@ -22,6 +24,7 @@ function formatTime(unix: number): string {
 export default function AttestationTimeline({
   attestations,
   agentNames,
+  addressNames,
 }: AttestationTimelineProps) {
   const addresses = getAddresses();
 
@@ -101,7 +104,7 @@ export default function AttestationTimeline({
                     style={{ fontSize: "9px", color: "rgba(255,255,255,0.3)" }}
                   >
                     <span>{formatTime(att.time)}</span>
-                    <span>from {truncateAddress(att.attester)}</span>
+                    <span>from {addressNames?.[att.attester.toLowerCase()] || truncateAddress(att.attester)}</span>
                     {att.txid && (
                       <>
                         <a

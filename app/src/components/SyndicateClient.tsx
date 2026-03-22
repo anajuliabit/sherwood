@@ -10,6 +10,7 @@ interface SyndicateClientProps {
   subdomain: string;
   vault: Address;
   creator: Address;
+  creatorName?: string;
   paused: boolean;
   chainId: number;
   assetDecimals: number;
@@ -22,6 +23,7 @@ export default function SyndicateClient({
   subdomain,
   vault,
   creator,
+  creatorName,
   paused,
   chainId,
   assetDecimals,
@@ -57,6 +59,7 @@ export default function SyndicateClient({
         subdomain={subdomain}
         vault={vault}
         creator={creator}
+        creatorName={creatorName}
         paused={paused}
         chainId={chainId}
         activeTab={activeTab}

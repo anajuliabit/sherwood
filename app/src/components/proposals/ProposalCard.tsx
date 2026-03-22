@@ -13,6 +13,7 @@ interface ProposalCardProps {
   governorAddress: Address;
   params: GovernorParams;
   assetDecimals: number;
+  addressNames?: Record<string, string>;
 }
 
 export default function ProposalCard({
@@ -20,6 +21,7 @@ export default function ProposalCard({
   governorAddress,
   params,
   assetDecimals,
+  addressNames,
 }: ProposalCardProps) {
   const title =
     proposal.metadata?.title || `Proposal #${proposal.id.toString()}`;
@@ -73,7 +75,7 @@ export default function ProposalCard({
               fontFamily: "var(--font-plus-jakarta), sans-serif",
             }}
           >
-            by {truncateAddress(proposal.proposer)} · Fee:{" "}
+            by {addressNames?.[proposal.proposer.toLowerCase()] || truncateAddress(proposal.proposer)} · Fee:{" "}
             {formatBps(proposal.performanceFeeBps)} ·{" "}
             {isPending ? "Voting" : "Execution"}: {deadline > 0n ? formatTimeRemaining(deadline) : "—"}
           </div>

@@ -10,6 +10,7 @@ interface ProposalHistoryProps {
   proposals: ProposalData[];
   assetDecimals: number;
   assetSymbol: string;
+  addressNames?: Record<string, string>;
 }
 
 function StateBadge({ state, pnl }: { state: ProposalState; pnl?: bigint }) {
@@ -97,6 +98,7 @@ export default function ProposalHistory({
   proposals,
   assetDecimals,
   assetSymbol,
+  addressNames,
 }: ProposalHistoryProps) {
   return (
     <div className="panel">
@@ -144,7 +146,7 @@ export default function ProposalHistory({
                   <td>
                     <StateBadge state={p.computedState} pnl={p.pnl} />
                   </td>
-                  <td>{truncateAddress(p.proposer)}</td>
+                  <td>{addressNames?.[p.proposer.toLowerCase()] || truncateAddress(p.proposer)}</td>
                   <td>
                     {p.capitalSnapshot > 0n
                       ? formatCapital(p.capitalSnapshot, assetDecimals, assetSymbol)

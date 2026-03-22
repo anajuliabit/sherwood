@@ -10,13 +10,14 @@ import {
   CHAINS,
   type ChainEntry,
   getPublicClient,
+  getAddresses,
   SYNDICATE_FACTORY_ABI,
   SYNDICATE_VAULT_ABI,
   SYNDICATE_GOVERNOR_ABI,
   ERC20_ABI,
   formatAsset,
 } from "./contracts";
-import { fetchMetadata } from "./syndicate-data";
+import { fetchMetadata, resolveAgentIdentities } from "./syndicate-data";
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -37,6 +38,7 @@ interface SubgraphSyndicate {
 export interface AgentDisplay {
   agentAddress: string;
   agentId: string;
+  agentName?: string;
   proposalCount: number;
   totalPnl: string; // formatted P&L string
   totalPnlRaw: number; // raw number for sorting
@@ -264,6 +266,24 @@ async function fetchViaSubgraph(
   const vaultAddresses = data.syndicates.map((s) => s.vault as Address);
   const proposalStatuses = await resolveProposalStatuses(chainId, vaultAddresses);
 
+  // Resolve ERC-8004 identities for all agents across syndicates
+  const allAgents = data.syndicates.flatMap((s) => s.agents || []);
+  const addresses = getAddresses(chainId);
+  const identityMap: Record<string, string> = {};
+  if (allAgents.length > 0 && addresses.identityRegistry !== ZERO_ADDR) {
+    const uniqueIds = [...new Set(allAgents.map((a) => BigInt(a.agentId)))];
+    const identities = await resolveAgentIdentities(
+      chainId,
+      uniqueIds,
+      addresses.identityRegistry,
+    );
+    for (let i = 0; i < uniqueIds.length; i++) {
+      if (identities[i]?.name) {
+        identityMap[uniqueIds[i].toString()] = identities[i]!.name;
+      }
+    }
+  }
+
   return Promise.all(
     data.syndicates.map(async (s, i) => {
       const metadata = await fetchMetadata(s.metadataURI);
@@ -321,6 +341,7 @@ async function fetchViaSubgraph(
           return {
             agentAddress: a.agentAddress,
             agentId: a.agentId,
+            agentName: identityMap[a.agentId],
             proposalCount: stats.count,
             totalPnl: stats.count > 0 ? pnlDisplay : "—",
             totalPnlRaw: Number(stats.pnl) / 10 ** info.decimals,
@@ -442,6 +463,8 @@ async function fetchViaOnChain(
 
   // Index agent configs by vault address
   const agentsByVault: Record<string, AgentDisplay[]> = {};
+  const allAgentIds: bigint[] = [];
+  const agentIdToIndex: { vaultKey: string; idx: number; agentId: bigint }[] = [];
   let configIdx = 0;
   for (let i = 0; i < rawSyndicates.length; i++) {
     const agentAddresses = (vaultResults[i * 4 + 3]?.result as Address[]) ?? [];
@@ -453,13 +476,39 @@ async function fetchViaOnChain(
         ? (r.result as { agentId: bigint; agentAddress: Address; active: boolean })
         : null;
       if (cfg?.active) {
-        agentsByVault[vaultKey].push({
+        const display: AgentDisplay = {
           agentAddress: addr,
           agentId: cfg.agentId.toString(),
           proposalCount: 0,
           totalPnl: "—",
           totalPnlRaw: 0,
-        });
+        };
+        agentsByVault[vaultKey].push(display);
+        allAgentIds.push(cfg.agentId);
+        agentIdToIndex.push({ vaultKey, idx: agentsByVault[vaultKey].length - 1, agentId: cfg.agentId });
+      }
+    }
+  }
+
+  // Resolve ERC-8004 identities for all agents
+  const addresses = getAddresses(chainId);
+  if (allAgentIds.length > 0 && addresses.identityRegistry !== ZERO_ADDR) {
+    const uniqueIds = [...new Set(allAgentIds)];
+    const identities = await resolveAgentIdentities(
+      chainId,
+      uniqueIds,
+      addresses.identityRegistry,
+    );
+    const nameMap: Record<string, string> = {};
+    for (let i = 0; i < uniqueIds.length; i++) {
+      if (identities[i]?.name) {
+        nameMap[uniqueIds[i].toString()] = identities[i]!.name;
+      }
+    }
+    for (const entry of agentIdToIndex) {
+      const name = nameMap[entry.agentId.toString()];
+      if (name) {
+        agentsByVault[entry.vaultKey][entry.idx].agentName = name;
       }
     }
   }

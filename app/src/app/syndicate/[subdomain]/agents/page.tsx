@@ -33,6 +33,17 @@ export default async function AgentsPage({
   const activeAgents = data.agents.filter((a) => a.active);
   const inactiveAgents = data.agents.filter((a) => !a.active);
 
+  // Build address → display name map for creator resolution
+  const addressNames: Record<string, string> = {};
+  for (const agent of data.agents) {
+    const displayName = agent.identity?.name || `Agent #${agent.agentId.toString()}`;
+    addressNames[agent.agentAddress.toLowerCase()] = displayName;
+  }
+  const creatorKey = data.creator.toLowerCase();
+  if (!addressNames[creatorKey]) {
+    addressNames[creatorKey] = name;
+  }
+
   return (
     <>
       <TorusKnotBackground
@@ -56,6 +67,7 @@ export default async function AgentsPage({
             subdomain={subdomain}
             vault={data.vault}
             creator={data.creator}
+            creatorName={addressNames[creatorKey]}
             paused={data.paused}
             chainId={data.chainId}
             assetDecimals={data.assetDecimals}

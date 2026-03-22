@@ -36,7 +36,7 @@ export default async function LeaderboardPage() {
 
           {/* Section header */}
           <div className="leaderboard-header">
-            <span className="section-num">//</span>
+            <span className="section-num">// Active Syndicates</span>
             <h1 className="text-[3.5rem] font-medium tracking-tight text-white mb-4 font-[family-name:var(--font-inter)]">
               Leaderboard
             </h1>

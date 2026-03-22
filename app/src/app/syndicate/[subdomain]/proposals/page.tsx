@@ -263,6 +263,17 @@ export default async function ProposalsPage({
   const name =
     data.metadata?.name || `Syndicate #${data.syndicateId.toString()}`;
 
+  // Build address → display name map from agent identities
+  const addressNames: Record<string, string> = {};
+  for (const agent of data.agents) {
+    const displayName = agent.identity?.name || `Agent #${agent.agentId.toString()}`;
+    addressNames[agent.agentAddress.toLowerCase()] = displayName;
+  }
+  const creatorKey = data.creator.toLowerCase();
+  if (!addressNames[creatorKey]) {
+    addressNames[creatorKey] = data.metadata?.name || `Syndicate #${data.syndicateId.toString()}`;
+  }
+
   const liveGovernor = await fetchGovernorData(data.vault);
   const isMock = !liveGovernor;
   const governor = liveGovernor ?? buildMockData(data.vault);
@@ -319,6 +330,7 @@ export default async function ProposalsPage({
             subdomain={subdomain}
             vault={data.vault}
             creator={data.creator}
+            creatorName={addressNames[creatorKey]}
             paused={data.paused}
             chainId={data.chainId}
             assetDecimals={data.assetDecimals}
@@ -360,6 +372,7 @@ export default async function ProposalsPage({
             <ActiveProposal
               proposal={activeProposal}
               cooldownEnd={governor.cooldownEnd}
+              addressNames={addressNames}
             />
           </div>
 
@@ -385,6 +398,7 @@ export default async function ProposalsPage({
                   governorAddress={governor.governorAddress}
                   params={governor.params}
                   assetDecimals={data.assetDecimals}
+                  addressNames={addressNames}
                 />
               ))}
             </div>
@@ -398,6 +412,7 @@ export default async function ProposalsPage({
                 proposals={governor.proposals}
                 assetDecimals={data.assetDecimals}
                 assetSymbol={data.assetSymbol}
+                addressNames={addressNames}
               />
             </div>
             <div style={{ position: "relative" }}>
@@ -406,6 +421,7 @@ export default async function ProposalsPage({
                 proposals={governor.proposals}
                 assetDecimals={data.assetDecimals}
                 assetSymbol={data.assetSymbol}
+                addressNames={addressNames}
               />
             </div>
           </div>

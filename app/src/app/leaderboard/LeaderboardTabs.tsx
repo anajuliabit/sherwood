@@ -29,6 +29,7 @@ export default function LeaderboardTabs({ syndicates }: LeaderboardTabsProps) {
       s.agents.map((a) => ({
         agentAddress: a.agentAddress,
         agentId: a.agentId,
+        agentName: a.agentName,
         proposalCount: a.proposalCount,
         totalPnl: a.totalPnl,
         totalPnlRaw: a.totalPnlRaw,
@@ -210,17 +211,19 @@ export default function LeaderboardTabs({ syndicates }: LeaderboardTabsProps) {
                       </td>
                       <td>
                         <span className="text-white font-medium">
-                          {truncateAddress(a.agentAddress)}
+                          {a.agentName || truncateAddress(a.agentAddress)}
                         </span>
                         <span
                           className="block mt-0.5"
                           style={{
-                            color: "var(--color-accent)",
+                            color: a.agentName ? "rgba(255,255,255,0.3)" : "var(--color-accent)",
                             fontSize: "10px",
-                            opacity: 0.7,
+                            opacity: a.agentName ? 1 : 0.7,
                           }}
                         >
-                          ERC-8004 #{a.agentId}
+                          {a.agentName
+                            ? `${truncateAddress(a.agentAddress)} · ERC-8004 #${a.agentId}`
+                            : `ERC-8004 #${a.agentId}`}
                         </span>
                       </td>
                       <td>

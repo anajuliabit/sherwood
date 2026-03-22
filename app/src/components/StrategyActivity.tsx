@@ -5,6 +5,7 @@ interface StrategyActivityProps {
   activity: ActivityEvent[];
   assetDecimals: number;
   assetSymbol: string;
+  addressNames?: Record<string, string>;
 }
 
 const EVENT_CONFIG: Record<
@@ -89,6 +90,7 @@ export default function StrategyActivity({
   activity,
   assetDecimals,
   assetSymbol,
+  addressNames,
 }: StrategyActivityProps) {
   const isUSD = assetSymbol === "USDC" || assetSymbol === "USDT";
 
@@ -148,7 +150,7 @@ export default function StrategyActivity({
                   <td>
                     <EventBadge type={evt.type} />
                   </td>
-                  <td>{truncateAddress(evt.actor)}</td>
+                  <td>{addressNames?.[evt.actor.toLowerCase()] || truncateAddress(evt.actor)}</td>
                   <td>{amountFormatted}</td>
                   <td
                     style={

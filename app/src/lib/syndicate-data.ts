@@ -439,7 +439,7 @@ async function resolveOnChain(
 
 // ── ERC-8004 Agent Identity Resolution ─────────────────────
 
-async function resolveAgentIdentities(
+export async function resolveAgentIdentities(
   chainId: number,
   agentIds: bigint[],
   registryAddress: Address,

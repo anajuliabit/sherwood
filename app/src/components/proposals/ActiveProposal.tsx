@@ -9,11 +9,13 @@ import { truncateAddress, formatUSDC, formatBps } from "@/lib/contracts";
 interface ActiveProposalProps {
   proposal: ProposalData | null;
   cooldownEnd: bigint;
+  addressNames?: Record<string, string>;
 }
 
 export default function ActiveProposal({
   proposal,
   cooldownEnd,
+  addressNames,
 }: ActiveProposalProps) {
   const now = BigInt(Math.floor(Date.now() / 1000));
 
@@ -100,7 +102,7 @@ export default function ActiveProposal({
         <div className="metric-card">
           <div className="metric-label">Agent</div>
           <div className="metric-val" style={{ fontSize: "1rem" }}>
-            {truncateAddress(proposal.proposer)}
+            {addressNames?.[proposal.proposer.toLowerCase()] || truncateAddress(proposal.proposer)}
           </div>
         </div>
         <div className="metric-card">

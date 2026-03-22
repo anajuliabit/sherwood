@@ -6,6 +6,7 @@ interface AgentStatsProps {
   proposals: ProposalData[];
   assetDecimals: number;
   assetSymbol: string;
+  addressNames?: Record<string, string>;
 }
 
 interface AgentStat {
@@ -21,6 +22,7 @@ export default function AgentStats({
   proposals,
   assetDecimals,
   assetSymbol,
+  addressNames,
 }: AgentStatsProps) {
   const isUSD = assetSymbol === "USDC" || assetSymbol === "USDT";
   const statsMap = new Map<string, AgentStat>();
@@ -120,7 +122,7 @@ export default function AgentStats({
 
               return (
                 <tr key={stat.address}>
-                  <td>{truncateAddress(stat.address)}</td>
+                  <td>{addressNames?.[stat.address.toLowerCase()] || truncateAddress(stat.address)}</td>
                   <td>{stat.totalProposals}</td>
                   <td style={{ color: "var(--color-accent)" }}>
                     {stat.settled}

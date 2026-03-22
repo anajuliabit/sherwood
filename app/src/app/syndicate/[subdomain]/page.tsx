@@ -76,6 +76,7 @@ export default async function SyndicateDetailPage({
             subdomain={subdomain}
             vault={data.vault}
             creator={data.creator}
+            creatorName={addressNames[creatorKey]}
             paused={data.paused}
             chainId={data.chainId}
             assetDecimals={data.assetDecimals}
@@ -126,7 +127,7 @@ export default async function SyndicateDetailPage({
             <AgentRoster agents={data.agents} />
 
             {/* Bottom-left: Attestation Timeline */}
-            <AttestationTimeline attestations={data.attestations} agentNames={agentNames} />
+            <AttestationTimeline attestations={data.attestations} agentNames={agentNames} addressNames={addressNames} />
 
             {/* Bottom-right: Agent comms */}
             <LiveFeed groupId={data.xmtpGroupId ?? undefined} addressNames={addressNames} />
@@ -142,6 +143,7 @@ export default async function SyndicateDetailPage({
               activity={data.activity}
               assetDecimals={data.assetDecimals}
               assetSymbol={data.assetSymbol}
+              addressNames={addressNames}
             />
           </div>
         </main>

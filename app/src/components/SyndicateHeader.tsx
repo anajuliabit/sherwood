@@ -13,6 +13,7 @@ interface SyndicateHeaderProps {
   subdomain: string;
   vault: Address;
   creator: Address;
+  creatorName?: string;
   paused: boolean;
   chainId: number;
   activeTab: TabId;
@@ -74,6 +75,7 @@ export default function SyndicateHeader({
   subdomain,
   vault,
   creator,
+  creatorName,
   paused,
   chainId,
   activeTab,
@@ -115,7 +117,7 @@ export default function SyndicateHeader({
           Vault: {truncateAddress(vault)} <InlineCopy value={vault} />
         </span>
         <span className="flex items-center gap-1">
-          Creator: {truncateAddress(creator)} <InlineCopy value={creator} />
+          Creator: {creatorName || truncateAddress(creator)} <InlineCopy value={creator} />
         </span>
       </div>
 
