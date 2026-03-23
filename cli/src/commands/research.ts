@@ -156,15 +156,20 @@ async function postResearch(
   }
 
   // 2. Create EAS attestation with prompt, cost, provider, and IPFS URI
+  //    Recipient is vault so dashboard can display it under the syndicate
   const easSpinner = ora("Creating EAS attestation...").start();
   let attestationUid: string;
   try {
+    const { getChainContracts } = await import("../lib/config.js");
+    const { getChain } = await import("../lib/network.js");
+    const vaultRecipient = getChainContracts(getChain().id).vault as `0x${string}` | undefined;
     const { uid } = await createResearchAttestation(
       result.provider,
       result.queryType,
       prompt,
       result.costUsdc,
       resultUri,
+      vaultRecipient,
     );
     attestationUid = uid;
     easSpinner.succeed(

@@ -442,13 +442,16 @@ export function registerTradeCommands(program: Command): void {
       }
       console.log(`  Tx:       ${chalk.dim(getExplorerUrl(txHash as `0x${string}`))}`);
 
-      // EAS attestation (best-effort)
+      // EAS attestation (best-effort) — recipient is vault so dashboard can display it
       try {
         const { createTradeAttestation, getEasScanUrl } = await import("../lib/eas.js");
+        const { getChainContracts } = await import("../lib/config.js");
+        const { getChain: getActiveChain } = await import("../lib/network.js");
+        const vaultRecipient = getChainContracts(getActiveChain().id).vault as `0x${string}` | undefined;
         const { uid } = await createTradeAttestation(
           inputAddr, tokenAddr, inputAmount,
           formatUnits(tokensReceived, decimals),
-          txHash, "BUY",
+          txHash, "BUY", vaultRecipient,
         );
         if (uid !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
           console.log(`  Attested: ${chalk.dim(getEasScanUrl(uid))}`);
@@ -597,12 +600,15 @@ export function registerTradeCommands(program: Command): void {
       }
       console.log(`  Tx:       ${chalk.dim(getExplorerUrl(txHash as `0x${string}`))}`);
 
-      // EAS attestation (best-effort)
+      // EAS attestation (best-effort) — recipient is vault so dashboard can display it
       try {
         const { createTradeAttestation, getEasScanUrl } = await import("../lib/eas.js");
+        const { getChainContracts } = await import("../lib/config.js");
+        const { getChain: getActiveChain } = await import("../lib/network.js");
+        const vaultRecipient = getChainContracts(getActiveChain().id).vault as `0x${string}` | undefined;
         const { uid } = await createTradeAttestation(
           tokenAddr, outputAddr, sellAmount,
-          outputReceived.toFixed(6),
+          outputReceived,
           txHash, "SELL",
         );
         if (uid !== "0x0000000000000000000000000000000000000000000000000000000000000000") {

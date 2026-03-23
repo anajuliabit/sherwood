@@ -191,7 +191,7 @@ export async function revokeAttestation(
 
 /**
  * Create an X402_RESEARCH attestation — records a research query on-chain.
- * Attester: the agent. Recipient: the agent itself (self-attestation for audit trail).
+ * Attester: the agent. Recipient: vault address (links to syndicate) or agent itself.
  * Schema: "string provider, string queryType, string prompt, string costUsdc, string resultUri"
  */
 export async function createResearchAttestation(
@@ -200,6 +200,7 @@ export async function createResearchAttestation(
   prompt: string,
   costUsdc: string,
   resultUri: string,
+  recipient?: Address,
 ): Promise<{ uid: Hex; hash: Hex }> {
   const schemas = EAS_SCHEMAS();
   if (schemas.X402_RESEARCH === ZERO_BYTES32) {
@@ -225,7 +226,7 @@ export async function createResearchAttestation(
     args: [{
       schema: schemas.X402_RESEARCH,
       data: {
-        recipient: account.address,
+        recipient: recipient ?? account.address,
         expirationTime: 0n,
         revocable: false,
         refUID: ZERO_BYTES32,
@@ -285,6 +286,7 @@ export async function createVeniceProvisionAttestation(
 
 /**
  * Create a VENICE_INFERENCE attestation — records an inference call.
+ * Attester: the agent. Recipient: vault address (links to syndicate) or agent itself.
  * Schema: "string model, uint256 promptTokens, uint256 completionTokens, string promptHash"
  */
 export async function createVeniceInferenceAttestation(
@@ -292,6 +294,7 @@ export async function createVeniceInferenceAttestation(
   promptTokens: number,
   completionTokens: number,
   promptHash: string,
+  recipient?: Address,
 ): Promise<{ uid: Hex; hash: Hex }> {
   const schemas = EAS_SCHEMAS();
   if (schemas.VENICE_INFERENCE === ZERO_BYTES32) return skipAttestation("VENICE_INFERENCE");
@@ -316,7 +319,7 @@ export async function createVeniceInferenceAttestation(
     args: [{
       schema: schemas.VENICE_INFERENCE,
       data: {
-        recipient: account.address,
+        recipient: recipient ?? account.address,
         expirationTime: 0n,
         revocable: false,
         refUID: ZERO_BYTES32,
@@ -334,6 +337,7 @@ export async function createVeniceInferenceAttestation(
 
 /**
  * Create a TRADE_EXECUTED attestation — records a swap on-chain.
+ * Attester: the agent. Recipient: vault address (links to syndicate) or agent itself.
  * Schema: "address tokenIn, address tokenOut, uint256 amountIn, string amountOut, string txHash, string routing"
  */
 export async function createTradeAttestation(
@@ -343,6 +347,7 @@ export async function createTradeAttestation(
   amountOut: string,
   txHash: string,
   routing: string,
+  recipient?: Address,
 ): Promise<{ uid: Hex; hash: Hex }> {
   const schemas = EAS_SCHEMAS();
   if (schemas.TRADE_EXECUTED === ZERO_BYTES32) return skipAttestation("TRADE_EXECUTED");
@@ -364,7 +369,7 @@ export async function createTradeAttestation(
     args: [{
       schema: schemas.TRADE_EXECUTED,
       data: {
-        recipient: account.address,
+        recipient: recipient ?? account.address,
         expirationTime: 0n,
         revocable: false,
         refUID: ZERO_BYTES32,

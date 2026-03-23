@@ -321,47 +321,8 @@ async function resolveOnChain(
   const managementFeeBps = (vaultResults[7].result as bigint) ?? 0n;
   const assetAddress = (vaultResults[8].result as Address) ?? addresses.usdc;
 
-  // Step 2b: Check for capital deployed to active strategies
-  let deployedCapital = 0n;
-  try {
-    const governorAddr = await client.readContract({
-      address: vault,
-      abi: SYNDICATE_VAULT_ABI,
-      functionName: "governor",
-    }) as Address;
-
-    if (governorAddr && governorAddr !== "0x0000000000000000000000000000000000000000") {
-      const activeProposalId = await client.readContract({
-        address: governorAddr,
-        abi: SYNDICATE_GOVERNOR_ABI,
-        functionName: "getActiveProposal",
-        args: [vault],
-      }) as bigint;
-
-      if (activeProposalId > 0n) {
-        const proposal = await client.readContract({
-          address: governorAddr,
-          abi: SYNDICATE_GOVERNOR_ABI,
-          functionName: "getProposal",
-          args: [activeProposalId],
-        }) as { executedAt: bigint };
-
-        // Only count deployed capital when proposal is executed (capital has left the vault)
-        if (proposal.executedAt > 0n) {
-          deployedCapital = await client.readContract({
-            address: governorAddr,
-            abi: SYNDICATE_GOVERNOR_ABI,
-            functionName: "getCapitalSnapshot",
-            args: [activeProposalId],
-          }) as bigint;
-        }
-      }
-    }
-  } catch {
-    // Governor read failed — ignore, keep deployedCapital = 0
-  }
-
-  const effectiveTotalAssets = totalAssets + deployedCapital;
+  // TVL is the on-chain totalAssets — the vault's actual asset balance
+  const effectiveTotalAssets = totalAssets;
 
   // Step 2c: Get asset decimals + symbol
   const assetInfoResults = await client.multicall({
@@ -435,7 +396,7 @@ async function resolveOnChain(
   const [metadata, xmtpGroupId, attestations, activity, equityCurve] = await Promise.all([
     fetchMetadata(metadataURI),
     fetchXmtpGroupId(chainId, subdomain, addresses.l2Registry),
-    fetchSyndicateAttestations(creator, syndicateId, chainId),
+    fetchSyndicateAttestations(creator, syndicateId, chainId, vault),
     fetchStrategyActivity(entry.subgraphUrl, syndicateId.toString()),
     fetchEquityCurve(entry.subgraphUrl, syndicateId.toString(), assetDecimals, effectiveTotalAssets),
   ]);

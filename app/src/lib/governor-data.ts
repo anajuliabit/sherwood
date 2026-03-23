@@ -47,7 +47,6 @@ export interface ProposalData {
   vault: Address;
   metadataURI: string;
   performanceFeeBps: bigint;
-  splitIndex: bigint;
   strategyDuration: bigint;
   votesFor: bigint;
   votesAgainst: bigint;
@@ -59,7 +58,8 @@ export interface ProposalData {
   state: ProposalState;
   // Enriched fields
   computedState: ProposalState;
-  capitalSnapshot: bigint;
+  capitalSnapshot: bigint; // vault balance at execution (used for P&L baseline)
+  deployedCapital: bigint; // actual capital that left the vault for the strategy
   metadata: ProposalMetadata | null;
   pnl?: bigint; // P&L in deposit asset terms (positive = profit, negative = loss)
 }
@@ -153,7 +153,7 @@ export async function fetchGovernorData(
     return null;
   }
 
-  // Step 2: Read proposal count + governor params + active proposal + cooldown
+  // Step 2: Read proposal count + governor params + active proposal + cooldown + vault balance
   const baseResults = await client.multicall({
     contracts: [
       {
@@ -178,6 +178,11 @@ export async function fetchGovernorData(
         functionName: "getCooldownEnd",
         args: [vaultAddress],
       },
+      {
+        address: vaultAddress,
+        abi: SYNDICATE_VAULT_ABI,
+        functionName: "totalAssets",
+      },
     ],
   });
 
@@ -197,6 +202,7 @@ export async function fetchGovernorData(
   };
   const activeProposalId = (baseResults[2].result as bigint) ?? 0n;
   const cooldownEnd = (baseResults[3].result as bigint) ?? 0n;
+  const vaultTotalAssets = (baseResults[4].result as bigint) ?? 0n;
 
   // If proposalCount read failed but we have an active proposal, use it as a
   // lower-bound so we still fetch at least that proposal instead of returning empty.
@@ -262,7 +268,6 @@ export async function fetchGovernorData(
       vault: Address;
       metadataURI: string;
       performanceFeeBps: bigint;
-      splitIndex: bigint;
       strategyDuration: bigint;
       votesFor: bigint;
       votesAgainst: bigint;
@@ -287,13 +292,20 @@ export async function fetchGovernorData(
         ? (capitalRaw.result as bigint)
         : 0n;
 
+    // deployedCapital = capital that left the vault for the strategy
+    // Only meaningful for the active (executed) proposal — deposits are blocked during active proposals
+    const isActiveExecuted =
+      computedState === ProposalState.Executed && capitalSnapshot > 0n;
+    const deployedCapital = isActiveExecuted
+      ? capitalSnapshot - vaultTotalAssets
+      : 0n;
+
     allProposals.push({
       id: p.id,
       proposer: p.proposer,
       vault: p.vault,
       metadataURI: p.metadataURI,
       performanceFeeBps: p.performanceFeeBps,
-      splitIndex: p.splitIndex,
       strategyDuration: p.strategyDuration,
       votesFor: p.votesFor,
       votesAgainst: p.votesAgainst,
@@ -305,6 +317,7 @@ export async function fetchGovernorData(
       state: p.state as ProposalState,
       computedState,
       capitalSnapshot,
+      deployedCapital,
       metadata: null,
     });
   }

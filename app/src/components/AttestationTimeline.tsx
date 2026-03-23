@@ -21,6 +21,22 @@ function formatTime(unix: number): string {
   });
 }
 
+function badgeLabel(att: AttestationItem): string {
+  if (att.revoked) return "REVOKED";
+  switch (att.type) {
+    case "JOIN_REQUEST": return "JOIN";
+    case "APPROVED": return "APPROVED";
+    case "VENICE_INFERENCE": return "INFERENCE";
+    case "TRADE_EXECUTED": return "TRADE";
+    case "RESEARCH": return "RESEARCH";
+  }
+}
+
+function badgeType(att: AttestationItem): string {
+  if (att.revoked) return "revoked";
+  return att.type;
+}
+
 export default function AttestationTimeline({
   attestations,
   agentNames,
@@ -31,6 +47,124 @@ export default function AttestationTimeline({
   function agentLabel(agentId: bigint): string {
     const idStr = agentId.toString();
     return agentNames?.[idStr] || `Agent #${idStr}`;
+  }
+
+  function attesterName(att: AttestationItem): string {
+    return addressNames?.[att.attester.toLowerCase()] || truncateAddress(att.attester);
+  }
+
+  function renderDescription(att: AttestationItem) {
+    switch (att.type) {
+      case "JOIN_REQUEST":
+        return (
+          <>
+            <span style={{ color: "var(--color-accent)" }}>
+              {att.agentId !== undefined ? agentLabel(att.agentId) : attesterName(att)}
+            </span>{" "}
+            requested to join
+          </>
+        );
+      case "APPROVED":
+        return (
+          <>
+            <span style={{ color: "var(--color-accent)" }}>
+              {att.agentId !== undefined ? agentLabel(att.agentId) : attesterName(att)}
+            </span>{" "}
+            approved
+          </>
+        );
+      case "VENICE_INFERENCE":
+        return (
+          <>
+            <span style={{ color: "var(--color-accent)" }}>
+              {attesterName(att)}
+            </span>{" "}
+            ran inference
+            {att.model && (
+              <span style={{ color: "rgba(255,255,255,0.5)" }}> ({att.model})</span>
+            )}
+          </>
+        );
+      case "TRADE_EXECUTED":
+        return (
+          <>
+            <span style={{ color: "var(--color-accent)" }}>
+              {attesterName(att)}
+            </span>{" "}
+            executed {att.routing?.toLowerCase() || "trade"}
+          </>
+        );
+      case "RESEARCH":
+        return (
+          <>
+            <span style={{ color: "var(--color-accent)" }}>
+              {attesterName(att)}
+            </span>{" "}
+            researched
+            {att.queryType && (
+              <span style={{ color: "rgba(255,255,255,0.5)" }}> ({att.queryType})</span>
+            )}
+          </>
+        );
+    }
+  }
+
+  function renderDetail(att: AttestationItem) {
+    if (att.type === "JOIN_REQUEST" && att.message) {
+      return (
+        <div
+          className="font-[family-name:var(--font-plus-jakarta)]"
+          style={{
+            fontSize: "10px",
+            color: "rgba(255,255,255,0.5)",
+            marginTop: "4px",
+            fontStyle: "italic",
+          }}
+        >
+          &ldquo;{att.message}&rdquo;
+        </div>
+      );
+    }
+
+    if (att.type === "VENICE_INFERENCE" && att.promptTokens !== undefined) {
+      return (
+        <div
+          className="font-[family-name:var(--font-plus-jakarta)]"
+          style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", marginTop: "4px" }}
+        >
+          {att.promptTokens} in, {att.completionTokens} out tokens
+        </div>
+      );
+    }
+
+    if (att.type === "TRADE_EXECUTED" && att.amountOut) {
+      return (
+        <div
+          className="font-[family-name:var(--font-plus-jakarta)]"
+          style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", marginTop: "4px" }}
+        >
+          {att.amountOut} received
+        </div>
+      );
+    }
+
+    if (att.type === "RESEARCH" && att.prompt) {
+      return (
+        <div
+          className="font-[family-name:var(--font-plus-jakarta)]"
+          style={{
+            fontSize: "10px",
+            color: "rgba(255,255,255,0.5)",
+            marginTop: "4px",
+            fontStyle: "italic",
+          }}
+        >
+          &ldquo;{att.prompt}&rdquo;
+        </div>
+      );
+    }
+
+    return null;
   }
 
   return (
@@ -57,54 +191,24 @@ export default function AttestationTimeline({
                 {/* Type badge */}
                 <span
                   className="attestation-badge"
-                  data-type={att.revoked ? "revoked" : att.type}
+                  data-type={badgeType(att)}
                 >
-                  {att.revoked
-                    ? "REVOKED"
-                    : att.type === "JOIN_REQUEST"
-                      ? "JOIN"
-                      : "APPROVED"}
+                  {badgeLabel(att)}
                 </span>
 
                 <div className="flex-1 min-w-0">
                   <div className="font-[family-name:var(--font-plus-jakarta)] text-xs text-white">
-                    {att.type === "JOIN_REQUEST" ? (
-                      <>
-                        <span style={{ color: "var(--color-accent)" }}>
-                          {agentLabel(att.agentId)}
-                        </span>{" "}
-                        requested to join
-                      </>
-                    ) : (
-                      <>
-                        <span style={{ color: "var(--color-accent)" }}>
-                          {agentLabel(att.agentId)}
-                        </span>{" "}
-                        approved
-                      </>
-                    )}
+                    {renderDescription(att)}
                   </div>
 
-                  {att.message && (
-                    <div
-                      className="font-[family-name:var(--font-plus-jakarta)]"
-                      style={{
-                        fontSize: "10px",
-                        color: "rgba(255,255,255,0.5)",
-                        marginTop: "4px",
-                        fontStyle: "italic",
-                      }}
-                    >
-                      &ldquo;{att.message}&rdquo;
-                    </div>
-                  )}
+                  {renderDetail(att)}
 
                   <div
                     className="flex items-center gap-3 mt-1 font-[family-name:var(--font-plus-jakarta)]"
                     style={{ fontSize: "9px", color: "rgba(255,255,255,0.3)" }}
                   >
                     <span>{formatTime(att.time)}</span>
-                    <span>from {addressNames?.[att.attester.toLowerCase()] || truncateAddress(att.attester)}</span>
+                    <span>from {attesterName(att)}</span>
                     {att.txid && (
                       <>
                         <a

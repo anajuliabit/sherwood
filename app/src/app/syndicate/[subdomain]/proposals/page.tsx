@@ -56,7 +56,6 @@ function buildMockData(vault: Address): GovernorData {
       vault,
       metadataURI: "ipfs://mock",
       performanceFeeBps: 1500n,
-      splitIndex: 5n,
       strategyDuration: 7n * DAY,
       votesFor: 124_000_000_000n,   // 124,000 shares
       votesAgainst: 18_000_000_000n, // 18,000 shares
@@ -67,6 +66,7 @@ function buildMockData(vault: Address): GovernorData {
       state: ProposalState.Executed,
       computedState: ProposalState.Executed,
       capitalSnapshot: 50_000_000_000n, // 50,000 USDC
+      deployedCapital: 50_000_000_000n,
       metadata: {
         title: "Moonwell WETH Supply + USDC Borrow",
         description:
@@ -81,7 +81,6 @@ function buildMockData(vault: Address): GovernorData {
       vault,
       metadataURI: "ipfs://mock2",
       performanceFeeBps: 1000n,
-      splitIndex: 4n,
       strategyDuration: 14n * DAY,
       votesFor: 87_000_000_000n,
       votesAgainst: 31_000_000_000n,
@@ -92,6 +91,7 @@ function buildMockData(vault: Address): GovernorData {
       state: ProposalState.Pending,
       computedState: ProposalState.Pending,
       capitalSnapshot: 0n,
+      deployedCapital: 0n,
       metadata: {
         title: "Aerodrome USDC/cbBTC LP Strategy",
         description:
@@ -104,7 +104,6 @@ function buildMockData(vault: Address): GovernorData {
       vault,
       metadataURI: "ipfs://mock3",
       performanceFeeBps: 2000n,
-      splitIndex: 6n,
       strategyDuration: 3n * DAY,
       votesFor: 12_000_000_000n,
       votesAgainst: 0n,
@@ -115,6 +114,7 @@ function buildMockData(vault: Address): GovernorData {
       state: ProposalState.Pending,
       computedState: ProposalState.Pending,
       capitalSnapshot: 0n,
+      deployedCapital: 0n,
       metadata: {
         title: "Short-term AAVE USDC Lending",
         description:
@@ -129,7 +129,6 @@ function buildMockData(vault: Address): GovernorData {
       vault,
       metadataURI: "",
       performanceFeeBps: 1500n,
-      splitIndex: 5n,
       strategyDuration: 7n * DAY,
       votesFor: 98_000_000_000n,
       votesAgainst: 14_000_000_000n,
@@ -140,6 +139,7 @@ function buildMockData(vault: Address): GovernorData {
       state: ProposalState.Settled,
       computedState: ProposalState.Settled,
       capitalSnapshot: 40_000_000_000n,
+      deployedCapital: 40_000_000_000n,
       pnl: 3_200_000_000n, // +$3,200 profit
       metadata: {
         title: "Uniswap V3 ETH/USDC LP",
@@ -152,7 +152,6 @@ function buildMockData(vault: Address): GovernorData {
       vault,
       metadataURI: "",
       performanceFeeBps: 1000n,
-      splitIndex: 4n,
       strategyDuration: 5n * DAY,
       votesFor: 44_000_000_000n,
       votesAgainst: 71_000_000_000n,
@@ -163,6 +162,7 @@ function buildMockData(vault: Address): GovernorData {
       state: ProposalState.Rejected,
       computedState: ProposalState.Rejected,
       capitalSnapshot: 0n,
+      deployedCapital: 0n,
       metadata: {
         title: "High-leverage WBTC Short via GMX",
         description: "",
@@ -174,7 +174,6 @@ function buildMockData(vault: Address): GovernorData {
       vault,
       metadataURI: "",
       performanceFeeBps: 2000n,
-      splitIndex: 3n,
       strategyDuration: 10n * DAY,
       votesFor: 105_000_000_000n,
       votesAgainst: 22_000_000_000n,
@@ -185,6 +184,7 @@ function buildMockData(vault: Address): GovernorData {
       state: ProposalState.Settled,
       computedState: ProposalState.Settled,
       capitalSnapshot: 25_000_000_000n,
+      deployedCapital: 25_000_000_000n,
       pnl: -1_800_000_000n, // -$1,800 loss
       metadata: {
         title: "Morpho USDC Vault Deposit",
@@ -197,7 +197,6 @@ function buildMockData(vault: Address): GovernorData {
       vault,
       metadataURI: "",
       performanceFeeBps: 1500n,
-      splitIndex: 4n,
       strategyDuration: 7n * DAY,
       votesFor: 62_000_000_000n,
       votesAgainst: 8_000_000_000n,
@@ -208,6 +207,7 @@ function buildMockData(vault: Address): GovernorData {
       state: ProposalState.Settled,
       computedState: ProposalState.Settled,
       capitalSnapshot: 20_000_000_000n,
+      deployedCapital: 20_000_000_000n,
       pnl: 1_400_000_000n, // +$1,400 profit
       metadata: {
         title: "Moonwell USDC Supply",
