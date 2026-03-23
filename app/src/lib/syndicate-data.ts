@@ -435,7 +435,7 @@ async function resolveOnChain(
   const [metadata, xmtpGroupId, attestations, activity, equityCurve] = await Promise.all([
     fetchMetadata(metadataURI),
     fetchXmtpGroupId(chainId, subdomain, addresses.l2Registry),
-    fetchSyndicateAttestations(creator, syndicateId, chainId),
+    fetchSyndicateAttestations(creator, syndicateId, chainId, vault),
     fetchStrategyActivity(entry.subgraphUrl, syndicateId.toString()),
     fetchEquityCurve(entry.subgraphUrl, syndicateId.toString(), assetDecimals, effectiveTotalAssets),
   ]);

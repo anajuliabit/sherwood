@@ -71,6 +71,9 @@ export interface ChainAddresses {
   easSchemas: {
     joinRequest: `0x${string}`;
     agentApproved: `0x${string}`;
+    veniceInference: `0x${string}`;
+    tradeExecuted: `0x${string}`;
+    x402Research: `0x${string}`;
   };
   blockExplorer: string;
   easExplorer: string;
@@ -92,6 +95,12 @@ const BASE_ADDRESSES: ChainAddresses = {
       "0x1e7ce17b16233977ba913b156033e98f52029f4bee273a4abefe6c15ce11d5ef",
     agentApproved:
       "0x1013f7b38f433b2a93fc5ac162482813081c64edd67cea9b5a90698531ddb607",
+    veniceInference:
+      "0xf9b4e530f3016c19439b67372a1c213c9339857627fb817032614b97433a2a14",
+    tradeExecuted:
+      "0x06bb488363a468f7f857ddc8cfffe918d048b8746a0d59eca9cd7f58dbdb4af6",
+    x402Research:
+      "0x86c67f0a59acb3093ecbeb6c4d1d4352e4a48143672e92ef9dd2fdfc8a9ca708",
   },
   blockExplorer: "https://basescan.org",
   easExplorer: "https://base.easscan.org",
@@ -109,6 +118,12 @@ const BASE_SEPOLIA_ADDRESSES: ChainAddresses = {
       "0x1e7ce17b16233977ba913b156033e98f52029f4bee273a4abefe6c15ce11d5ef",
     agentApproved:
       "0x1013f7b38f433b2a93fc5ac162482813081c64edd67cea9b5a90698531ddb607",
+    veniceInference:
+      "0xf9b4e530f3016c19439b67372a1c213c9339857627fb817032614b97433a2a14",
+    tradeExecuted:
+      "0x06bb488363a468f7f857ddc8cfffe918d048b8746a0d59eca9cd7f58dbdb4af6",
+    x402Research:
+      "0x86c67f0a59acb3093ecbeb6c4d1d4352e4a48143672e92ef9dd2fdfc8a9ca708",
   },
   blockExplorer: "https://sepolia.basescan.org",
   easExplorer: "https://base-sepolia.easscan.org",
@@ -124,6 +139,9 @@ const ROBINHOOD_TESTNET_ADDRESSES: ChainAddresses = {
   easSchemas: {
     joinRequest: ZERO_BYTES32,
     agentApproved: ZERO_BYTES32,
+    veniceInference: ZERO_BYTES32,
+    tradeExecuted: ZERO_BYTES32,
+    x402Research: ZERO_BYTES32,
   },
   blockExplorer: "https://explorer.testnet.chain.robinhood.com",
   easExplorer: "",

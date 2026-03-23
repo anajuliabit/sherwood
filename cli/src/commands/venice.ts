@@ -223,6 +223,7 @@ export function registerVeniceCommands(program: Command): void {
     .option("--temperature <n>", "Sampling temperature (0-2)")
     .option("--max-tokens <n>", "Maximum completion tokens")
     .option("--json", "Output raw JSON response", false)
+    .option("--vault <address>", "Vault address — attestation recipient (defaults to config vault)")
     .action(async (opts) => {
       // Build messages
       const messages: { role: "system" | "user" | "assistant"; content: string }[] = [];
@@ -269,13 +270,17 @@ export function registerVeniceCommands(program: Command): void {
         // Create EAS attestation (best-effort)
         try {
           const { createVeniceInferenceAttestation, getEasScanUrl } = await import("../lib/eas.js");
-          const { keccak256, toHex } = await import("viem");
+          const { keccak256, toHex, isAddress: isAddr } = await import("viem");
+          const { getChainContracts } = await import("../lib/config.js");
+          const { getChain: getActiveChain } = await import("../lib/network.js");
+          const vaultRecipient = (opts.vault && isAddr(opts.vault)) ? opts.vault : getChainContracts(getActiveChain().id).vault;
           const promptHash = keccak256(toHex(userContent)).slice(0, 18); // short hash
           const { uid } = await createVeniceInferenceAttestation(
             result.model,
             result.usage.promptTokens,
             result.usage.completionTokens,
             promptHash,
+            vaultRecipient as `0x${string}` | undefined,
           );
           if (uid !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
             console.log(chalk.dim(`Attested: ${getEasScanUrl(uid)}`));
