@@ -348,12 +348,15 @@ async function resolveOnChain(
 
         // Only count deployed capital when proposal is executed (capital has left the vault)
         if (proposal.executedAt > 0n) {
-          deployedCapital = await client.readContract({
+          const capitalSnapshot = await client.readContract({
             address: governorAddr,
             abi: SYNDICATE_GOVERNOR_ABI,
             functionName: "getCapitalSnapshot",
             args: [activeProposalId],
           }) as bigint;
+          // capitalSnapshot is the full vault balance before execution;
+          // actual deployed capital is what left the vault
+          deployedCapital = capitalSnapshot - totalAssets;
         }
       }
     }

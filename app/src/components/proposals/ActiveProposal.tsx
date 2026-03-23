@@ -112,7 +112,7 @@ export default function ActiveProposal({
         <div className="metric-card">
           <div className="metric-label">Capital Deployed</div>
           <div className="metric-val" style={{ fontSize: "1rem" }}>
-            {formatAsset(proposal.capitalSnapshot, assetDecimals)} {assetSymbol}
+            {formatAsset(proposal.deployedCapital, assetDecimals)} {assetSymbol}
           </div>
         </div>
         <div className="metric-card">
