@@ -8,7 +8,7 @@
 import type { Address, Hex } from "viem";
 import { parseUnits, formatUnits, decodeEventLog } from "viem";
 import { getChain, getNetwork } from "./network.js";
-import { getPublicClient, getWalletClient, getAccount } from "./client.js";
+import { getPublicClient, getAccount, writeContractWithRetry, waitForReceipt } from "./client.js";
 import { SYNDICATE_FACTORY_ABI } from "./abis.js";
 import { TOKENS, SHERWOOD } from "./addresses.js";
 
@@ -48,10 +48,9 @@ export interface CreateSyndicateResult {
  * Waits for receipt and extracts vault address from SyndicateCreated event.
  */
 export async function createSyndicate(params: CreateSyndicateParams): Promise<CreateSyndicateResult> {
-  const wallet = getWalletClient();
   const client = getPublicClient();
 
-  const hash = await wallet.writeContract({
+  const hash = await writeContractWithRetry({
     account: getAccount(),
     chain: getChain(),
     address: getFactoryAddress(),
@@ -174,9 +173,7 @@ export async function getActiveSyndicates(): Promise<SyndicateInfo[]> {
  * Update syndicate metadata (creator only).
  */
 export async function updateMetadata(syndicateId: bigint, metadataURI: string): Promise<Hex> {
-  const wallet = getWalletClient();
-  const client = getPublicClient();
-  const hash = await wallet.writeContract({
+  const hash = await writeContractWithRetry({
     account: getAccount(),
     chain: getChain(),
     address: getFactoryAddress(),
@@ -184,6 +181,6 @@ export async function updateMetadata(syndicateId: bigint, metadataURI: string): 
     functionName: "updateMetadata",
     args: [syndicateId, metadataURI],
   });
-  await client.waitForTransactionReceipt({ hash });
+  await waitForReceipt(hash);
   return hash;
 }

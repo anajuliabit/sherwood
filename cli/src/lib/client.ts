@@ -96,8 +96,9 @@ export async function estimateFeesWithBuffer() {
   };
 }
 
-// ── Retry helpers for nonce collision / underpriced tx recovery ──
+// ── Nonce management + retry helpers ──
 //
+// Handles: nonce collisions, underpriced replacements, stuck pending txs.
 // Gas bump ceiling: base * 1.2 (buffer) * 1.1^3 (max retries) ≈ 1.6x base fee.
 
 const MAX_RETRIES = 3;
@@ -124,17 +125,73 @@ function bumpFees(fees: { maxFeePerGas: bigint; maxPriorityFeePerGas: bigint }) 
   };
 }
 
+// ── Stuck nonce detection ──
+
+/**
+ * Check if the wallet has a stuck nonce (pending tx count > confirmed tx count).
+ * Returns the stuck nonce number, or null if the wallet is clean.
+ */
+export async function detectStuckNonce(): Promise<number | null> {
+  const client = getPublicClient();
+  const address = getAccount().address;
+  const [confirmed, pending] = await Promise.all([
+    client.getTransactionCount({ address, blockTag: "latest" }),
+    client.getTransactionCount({ address, blockTag: "pending" }),
+  ]);
+  return pending > confirmed ? confirmed : null;
+}
+
+/**
+ * Unstick a wallet by sending a 0-value self-transfer at the stuck nonce with bumped gas.
+ * This replaces the stuck pending tx and unblocks subsequent nonces.
+ */
+export async function unstickWallet(): Promise<Hex> {
+  const stuckNonce = await detectStuckNonce();
+  if (stuckNonce === null) {
+    throw new Error("No stuck nonce detected — wallet is clean.");
+  }
+
+  console.warn(`  Unsticking wallet: replacing stuck tx at nonce ${stuckNonce}...`);
+  const wallet = getWalletClient();
+  const account = getAccount();
+
+  // Use 2x gas buffer to guarantee replacement
+  const { maxFeePerGas, maxPriorityFeePerGas } = await estimateFeesWithBuffer();
+  const hash = await wallet.sendTransaction({
+    account,
+    chain: wallet.chain,
+    to: account.address,
+    value: 0n,
+    nonce: stuckNonce,
+    maxFeePerGas: maxFeePerGas * 2n,
+    maxPriorityFeePerGas: maxPriorityFeePerGas * 2n,
+  });
+
+  const client = getPublicClient();
+  await client.waitForTransactionReceipt({ hash });
+  console.warn(`  Wallet unstuck (nonce ${stuckNonce} replaced).`);
+  return hash;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TxSender = (params: any) => Promise<Hex>;
 
 /**
  * Shared retry loop: explicit nonce + EIP-1559 fee buffer + gas-bump on underpriced errors.
  * On "nonce too low" / "NONCE_EXPIRED", re-fetches nonce from pending state before retrying.
+ * Also detects stuck nonces before sending and auto-unsticks the wallet.
  */
 async function withRetry(send: TxSender, txParams: Record<string, unknown>): Promise<Hex> {
   const client = getPublicClient();
   const account = getAccount();
   let fees = await estimateFeesWithBuffer();
+
+  // Auto-detect and clear stuck nonces before attempting the tx
+  const stuckNonce = await detectStuckNonce();
+  if (stuckNonce !== null) {
+    await unstickWallet();
+  }
+
   let nonce = await client.getTransactionCount({ address: account.address, blockTag: "pending" });
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -173,4 +230,26 @@ export async function sendTxWithRetry(txParams: Record<string, any>): Promise<He
 export async function writeContractWithRetry(txParams: Record<string, any>): Promise<Hex> {
   const wallet = getWalletClient();
   return withRetry((p) => wallet.writeContract(p), txParams);
+}
+
+/**
+ * Wait for a tx receipt. On timeout, checks for stuck nonce and auto-unsticks.
+ */
+export async function waitForReceipt(hash: Hex): Promise<{ status: string; transactionHash: Hex }> {
+  const client = getPublicClient();
+  try {
+    return await client.waitForTransactionReceipt({ hash });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (err: any) {
+    // If receipt wait times out, check for stuck nonce
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("timeout") || msg.includes("Timed out")) {
+      const stuck = await detectStuckNonce();
+      if (stuck !== null) {
+        console.warn(`  Tx ${hash} appears stuck — attempting to unstick wallet...`);
+        await unstickWallet();
+      }
+    }
+    throw err;
+  }
 }
