@@ -70,7 +70,7 @@ export async function createSyndicate(params: CreateSyndicateParams): Promise<Cr
   });
 
   // Wait for receipt and extract vault from SyndicateCreated event
-  const receipt = await client.waitForTransactionReceipt({ hash });
+  const receipt = await waitForReceipt(hash);
 
   // Parse SyndicateCreated event from receipt logs
   for (const log of receipt.logs) {

@@ -317,7 +317,7 @@ export async function propose(
     args: [vault, metadataURI, performanceFeeBps, strategyDuration, executeCalls, settlementCalls, coProposers],
   });
 
-  const receipt = await client.waitForTransactionReceipt({ hash });
+  const receipt = await waitForReceipt(hash);
 
   // Parse proposalId from the ProposalCreated event in the receipt logs.
   // Falls back to proposalCount() if event parsing fails.

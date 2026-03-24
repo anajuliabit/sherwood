@@ -102,6 +102,8 @@ export async function estimateFeesWithBuffer() {
 // Gas bump ceiling: base * 1.2 (buffer) * 1.1^3 (max retries) ≈ 1.6x base fee.
 
 const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1500; // backoff between retries
+const STUCK_NONCE_CONFIRM_DELAY_MS = 2500; // staleness check delay
 const GAS_BUMP_NUMERATOR = 110n;
 const GAS_BUMP_DENOMINATOR = 100n;
 
@@ -130,6 +132,9 @@ function bumpFees(fees: { maxFeePerGas: bigint; maxPriorityFeePerGas: bigint }) 
 /**
  * Check if the wallet has a stuck nonce (pending tx count > confirmed tx count).
  * Returns the stuck nonce number, or null if the wallet is clean.
+ *
+ * Includes a staleness guard: if pending > confirmed, waits ~2.5s and re-checks
+ * to avoid false positives from propagation delays.
  */
 export async function detectStuckNonce(): Promise<number | null> {
   const client = getPublicClient();
@@ -138,14 +143,23 @@ export async function detectStuckNonce(): Promise<number | null> {
     client.getTransactionCount({ address, blockTag: "latest" }),
     client.getTransactionCount({ address, blockTag: "pending" }),
   ]);
-  return pending > confirmed ? confirmed : null;
+  if (pending <= confirmed) return null;
+
+  // Staleness guard: re-check after a short delay to avoid false positives
+  await new Promise((r) => setTimeout(r, STUCK_NONCE_CONFIRM_DELAY_MS));
+  const [confirmed2, pending2] = await Promise.all([
+    client.getTransactionCount({ address, blockTag: "latest" }),
+    client.getTransactionCount({ address, blockTag: "pending" }),
+  ]);
+  return pending2 > confirmed2 ? confirmed2 : null;
 }
 
 /**
- * Unstick a wallet by sending a 0-value self-transfer at the stuck nonce with bumped gas.
- * This replaces the stuck pending tx and unblocks subsequent nonces.
+ * Clear a single stuck nonce by sending a 0-value self-transfer with aggressively bumped gas.
+ * Uses 5x the buffered fee estimate to guarantee replacement even if the original tx
+ * was sent during a gas spike (EIP-1559 requires >= 110% of original maxPriorityFeePerGas).
  */
-export async function unstickWallet(): Promise<Hex> {
+async function unstickWalletSingle(): Promise<Hex> {
   const stuckNonce = await detectStuckNonce();
   if (stuckNonce === null) {
     throw new Error("No stuck nonce detected — wallet is clean.");
@@ -155,7 +169,7 @@ export async function unstickWallet(): Promise<Hex> {
   const wallet = getWalletClient();
   const account = getAccount();
 
-  // Use 2x gas buffer to guarantee replacement
+  // Use 5x gas buffer to guarantee replacement even for txs sent during gas spikes
   const { maxFeePerGas, maxPriorityFeePerGas } = await estimateFeesWithBuffer();
   const hash = await wallet.sendTransaction({
     account,
@@ -163,14 +177,29 @@ export async function unstickWallet(): Promise<Hex> {
     to: account.address,
     value: 0n,
     nonce: stuckNonce,
-    maxFeePerGas: maxFeePerGas * 2n,
-    maxPriorityFeePerGas: maxPriorityFeePerGas * 2n,
+    maxFeePerGas: maxFeePerGas * 5n,
+    maxPriorityFeePerGas: maxPriorityFeePerGas * 5n,
   });
 
   const client = getPublicClient();
   await client.waitForTransactionReceipt({ hash });
   console.warn(`  Wallet unstuck (nonce ${stuckNonce} replaced).`);
   return hash;
+}
+
+/**
+ * Unstick a wallet by clearing ALL stuck nonces, not just the first one.
+ * Loops until pending == confirmed nonce count.
+ */
+export async function unstickWallet(): Promise<Hex[]> {
+  const hashes: Hex[] = [];
+  while ((await detectStuckNonce()) !== null) {
+    hashes.push(await unstickWalletSingle());
+  }
+  if (hashes.length === 0) {
+    throw new Error("No stuck nonce detected — wallet is clean.");
+  }
+  return hashes;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -186,10 +215,9 @@ async function withRetry(send: TxSender, txParams: Record<string, unknown>): Pro
   const account = getAccount();
   let fees = await estimateFeesWithBuffer();
 
-  // Auto-detect and clear stuck nonces before attempting the tx
-  const stuckNonce = await detectStuckNonce();
-  if (stuckNonce !== null) {
-    await unstickWallet();
+  // Auto-detect and clear ALL stuck nonces before attempting the tx
+  while ((await detectStuckNonce()) !== null) {
+    await unstickWalletSingle();
   }
 
   let nonce = await client.getTransactionCount({ address: account.address, blockTag: "pending" });
@@ -202,6 +230,9 @@ async function withRetry(send: TxSender, txParams: Record<string, unknown>): Pro
 
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`  Retry ${attempt + 1}/${MAX_RETRIES}: ${isNonceStaleError(msg) ? "refreshing nonce" : "bumping gas"}...`);
+
+      // Backoff between retries to let mempool settle
+      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
 
       if (isNonceStaleError(msg)) {
         // Fresh nonce = fresh tx, no replacement needed — only bump fees for underpriced errors
@@ -234,6 +265,11 @@ export async function writeContractWithRetry(txParams: Record<string, any>): Pro
 
 /**
  * Wait for a tx receipt. On timeout, checks for stuck nonce and auto-unsticks.
+ *
+ * **Important**: After unsticking, the error is still re-thrown because the original
+ * tx is lost. Callers should use `writeContractWithRetry` / `sendTxWithRetry` which
+ * re-fetch nonces automatically. Do NOT manually retry after this throws — use the
+ * retry-aware wrappers instead.
  */
 export async function waitForReceipt(hash: Hex): Promise<{ status: string; transactionHash: Hex }> {
   const client = getPublicClient();
@@ -244,10 +280,11 @@ export async function waitForReceipt(hash: Hex): Promise<{ status: string; trans
     // If receipt wait times out, check for stuck nonce
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("timeout") || msg.includes("Timed out")) {
-      const stuck = await detectStuckNonce();
-      if (stuck !== null) {
+      if ((await detectStuckNonce()) !== null) {
         console.warn(`  Tx ${hash} appears stuck — attempting to unstick wallet...`);
-        await unstickWallet();
+        while ((await detectStuckNonce()) !== null) {
+          await unstickWalletSingle();
+        }
       }
     }
     throw err;

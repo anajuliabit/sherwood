@@ -112,7 +112,7 @@ export async function createJoinRequest(
     value: 0n,
   });
 
-  const receipt = await client.waitForTransactionReceipt({ hash });
+  const receipt = await waitForReceipt(hash);
   const uid = extractAttestationUid(receipt);
 
   return { uid, hash };
@@ -155,7 +155,7 @@ export async function createApproval(
     value: 0n,
   });
 
-  const receipt = await client.waitForTransactionReceipt({ hash });
+  const receipt = await waitForReceipt(hash);
   const uid = extractAttestationUid(receipt);
 
   return { uid, hash };
@@ -232,7 +232,7 @@ export async function createResearchAttestation(
     value: 0n,
   });
 
-  const receipt = await client.waitForTransactionReceipt({ hash });
+  const receipt = await waitForReceipt(hash);
   const uid = extractAttestationUid(receipt);
 
   return { uid, hash };
@@ -273,7 +273,7 @@ export async function createVeniceProvisionAttestation(
     value: 0n,
   });
 
-  const receipt = await client.waitForTransactionReceipt({ hash });
+  const receipt = await waitForReceipt(hash);
   const uid = extractAttestationUid(receipt);
   return { uid, hash };
 }
@@ -323,7 +323,7 @@ export async function createVeniceInferenceAttestation(
     value: 0n,
   });
 
-  const receipt = await client.waitForTransactionReceipt({ hash });
+  const receipt = await waitForReceipt(hash);
   const uid = extractAttestationUid(receipt);
   return { uid, hash };
 }
@@ -372,7 +372,7 @@ export async function createTradeAttestation(
     value: 0n,
   });
 
-  const receipt = await client.waitForTransactionReceipt({ hash });
+  const receipt = await waitForReceipt(hash);
   const uid = extractAttestationUid(receipt);
   return { uid, hash };
 }
