@@ -5,7 +5,7 @@
  */
 
 // dotenv loaded at entrypoint
-import type { Hex } from "viem";
+import type { Hex, TransactionReceipt } from "viem";
 import { createPublicClient, createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { getChain, getRpcUrl } from "./network.js";
@@ -271,7 +271,7 @@ export async function writeContractWithRetry(txParams: Record<string, any>): Pro
  * re-fetch nonces automatically. Do NOT manually retry after this throws — use the
  * retry-aware wrappers instead.
  */
-export async function waitForReceipt(hash: Hex): Promise<{ status: string; transactionHash: Hex }> {
+export async function waitForReceipt(hash: Hex): Promise<TransactionReceipt> {
   const client = getPublicClient();
   try {
     return await client.waitForTransactionReceipt({ hash });

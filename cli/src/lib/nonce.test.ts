@@ -52,6 +52,9 @@ vi.mock("./config.js", () => ({
   loadConfig: () => ({ privateKey: "0x" + "ab".repeat(32) }),
 }));
 
+// Use fake timers to avoid real delays in detectStuckNonce staleness check and retry backoff
+vi.useFakeTimers();
+
 // Import after mocks
 const clientModule = await import("./client.js");
 
@@ -72,30 +75,70 @@ beforeEach(() => {
   });
 });
 
+/**
+ * Helper: advance fake timers while a promise is pending.
+ * Repeatedly ticks to resolve any setTimeout-based delays.
+ */
+async function runWithTimers<T>(promise: Promise<T>): Promise<T> {
+  let result: T | undefined;
+  let error: unknown;
+  let done = false;
+
+  promise.then(
+    (r) => { result = r; done = true; },
+    (e) => { error = e; done = true; },
+  );
+
+  // Keep advancing timers until the promise resolves
+  while (!done) {
+    await vi.advanceTimersByTimeAsync(5000);
+  }
+
+  if (error !== undefined) throw error;
+  return result as T;
+}
+
 // ── detectStuckNonce ──
 
 describe("detectStuckNonce", () => {
   it("returns null when pending == confirmed (no stuck tx)", async () => {
     mockGetTransactionCount.mockResolvedValue(5);
-    const result = await clientModule.detectStuckNonce();
+    const result = await runWithTimers(clientModule.detectStuckNonce());
     expect(result).toBeNull();
   });
 
-  it("returns stuck nonce when pending > confirmed", async () => {
+  it("returns stuck nonce when pending > confirmed (persists after staleness check)", async () => {
     mockGetTransactionCount.mockImplementation(async (args) => {
       if (args.blockTag === "latest") return 5;
       if (args.blockTag === "pending") return 7;
       return 5;
     });
-    const result = await clientModule.detectStuckNonce();
+    const result = await runWithTimers(clientModule.detectStuckNonce());
     expect(result).toBe(5);
+    // Should have been called 4 times: 2 for initial check + 2 for staleness re-check
+    expect(mockGetTransactionCount).toHaveBeenCalledTimes(4);
+  });
+
+  it("returns null on false positive (gap resolves after delay)", async () => {
+    let callCount = 0;
+    mockGetTransactionCount.mockImplementation(async (args) => {
+      callCount++;
+      // First check: pending > confirmed (looks stuck)
+      if (callCount <= 2) {
+        return args.blockTag === "latest" ? 5 : 7;
+      }
+      // Second check after delay: gap resolved (tx confirmed)
+      return 7;
+    });
+    const result = await runWithTimers(clientModule.detectStuckNonce());
+    expect(result).toBeNull();
   });
 });
 
 // ── unstickWallet ──
 
 describe("unstickWallet", () => {
-  it("sends a 0-value self-transfer at the stuck nonce", async () => {
+  it("sends a 0-value self-transfer at the stuck nonce with 5x gas", async () => {
     mockGetTransactionCount.mockImplementation(async (args) => {
       if (args.blockTag === "latest") return 3;
       if (args.blockTag === "pending") return 5;
@@ -103,20 +146,74 @@ describe("unstickWallet", () => {
     });
     mockSendTransaction.mockResolvedValue("0xunstick_hash" as Hex);
 
-    const hash = await clientModule.unstickWallet();
+    // unstickWallet loops — after first unstick it calls detectStuckNonce again.
+    // We need it to eventually return clean. Simulate: stuck on first few calls, then clean.
+    let txCount = 0;
+    mockSendTransaction.mockImplementation(async () => {
+      txCount++;
+      // After each unstick, the next detectStuckNonce should see clean state
+      // Override mockGetTransactionCount to return clean after first unstick
+      mockGetTransactionCount.mockResolvedValue(5);
+      return `0xunstick_${txCount}` as Hex;
+    });
 
-    expect(hash).toBe("0xunstick_hash");
-    expect(mockSendTransaction).toHaveBeenCalledOnce();
+    const hashes = await runWithTimers(clientModule.unstickWallet());
 
-    const txParams = mockSendTransaction.mock.calls[0][0];
+    expect(hashes).toHaveLength(1);
+    expect(hashes[0]).toBe("0xunstick_1");
+
+    // Verify 5x gas multiplier: base * 1.2 (buffer) * 5 = 6x base
+    const txParams = mockSendTransaction.mock.calls[0][0] as Record<string, bigint>;
     expect(txParams.to).toBe(TEST_ADDRESS);
     expect(txParams.value).toBe(0n);
     expect(txParams.nonce).toBe(3);
+    // maxFeePerGas should be: 1000000000 * 120/100 * 5 = 6000000000
+    expect(txParams.maxFeePerGas).toBe(6000000000n);
+    expect(txParams.maxPriorityFeePerGas).toBe(600000000n);
+  });
+
+  it("clears multiple stuck nonces in a loop", async () => {
+    // Simulate 3 stuck nonces: confirmed=5, pending=8
+    // After each unstick, confirmed increments by 1
+    let confirmed = 5;
+    const pending = 8;
+    let unstickCount = 0;
+
+    mockGetTransactionCount.mockImplementation(async (args) => {
+      if (args.blockTag === "latest") return confirmed;
+      if (args.blockTag === "pending") return pending;
+      return confirmed;
+    });
+
+    mockSendTransaction.mockImplementation(async () => {
+      unstickCount++;
+      // After receipt confirmation, confirmed nonce advances
+      confirmed++;
+      return `0xunstick_${unstickCount}` as Hex;
+    });
+
+    const hashes = await runWithTimers(clientModule.unstickWallet());
+
+    expect(hashes).toHaveLength(3);
+    expect(hashes).toEqual(["0xunstick_1", "0xunstick_2", "0xunstick_3"]);
+    expect(mockSendTransaction).toHaveBeenCalledTimes(3);
   });
 
   it("throws when no stuck nonce is detected", async () => {
     mockGetTransactionCount.mockResolvedValue(5);
-    await expect(clientModule.unstickWallet()).rejects.toThrow("No stuck nonce detected");
+    await expect(runWithTimers(clientModule.unstickWallet())).rejects.toThrow("No stuck nonce detected");
+  });
+
+  it("handles replacement tx failure gracefully (insufficient ETH)", async () => {
+    mockGetTransactionCount.mockImplementation(async (args) => {
+      if (args.blockTag === "latest") return 3;
+      if (args.blockTag === "pending") return 5;
+      return 3;
+    });
+    mockSendTransaction.mockRejectedValue(new Error("insufficient funds for gas"));
+
+    await expect(runWithTimers(clientModule.unstickWallet()))
+      .rejects.toThrow("insufficient funds for gas");
   });
 });
 
@@ -127,7 +224,7 @@ describe("writeContractWithRetry", () => {
     mockGetTransactionCount.mockResolvedValue(10);
     mockWriteContract.mockResolvedValue("0xsuccess" as Hex);
 
-    const hash = await clientModule.writeContractWithRetry({ test: true });
+    const hash = await runWithTimers(clientModule.writeContractWithRetry({ test: true }));
     expect(hash).toBe("0xsuccess");
     expect(mockWriteContract).toHaveBeenCalledOnce();
   });
@@ -138,7 +235,7 @@ describe("writeContractWithRetry", () => {
       .mockRejectedValueOnce(new Error("replacement transaction underpriced"))
       .mockResolvedValueOnce("0xretried" as Hex);
 
-    const hash = await clientModule.writeContractWithRetry({ test: true });
+    const hash = await runWithTimers(clientModule.writeContractWithRetry({ test: true }));
 
     expect(hash).toBe("0xretried");
     expect(mockWriteContract).toHaveBeenCalledTimes(2);
@@ -154,9 +251,10 @@ describe("writeContractWithRetry", () => {
     let nonceCallCount = 0;
     mockGetTransactionCount.mockImplementation(async () => {
       nonceCallCount++;
-      // First 2 calls are detectStuckNonce (latest + pending = both 10, not stuck)
+      // First 2 calls are detectStuckNonce (latest + pending = both 10, not stuck → no re-check)
       // Third call is the initial nonce fetch = 10
-      // Fourth call is the refreshed nonce after "nonce too low" = 11
+      // Fourth+fifth calls are the retry's detectStuckNonce re-check (not stuck)
+      // ... then refreshed nonce = 11
       if (nonceCallCount <= 3) return 10;
       return 11;
     });
@@ -165,7 +263,7 @@ describe("writeContractWithRetry", () => {
       .mockRejectedValueOnce(new Error("nonce too low"))
       .mockResolvedValueOnce("0xfresh_nonce" as Hex);
 
-    const hash = await clientModule.writeContractWithRetry({ test: true });
+    const hash = await runWithTimers(clientModule.writeContractWithRetry({ test: true }));
 
     expect(hash).toBe("0xfresh_nonce");
     const secondCall = mockWriteContract.mock.calls[1][0] as Record<string, number>;
@@ -176,21 +274,20 @@ describe("writeContractWithRetry", () => {
     let callCount = 0;
     mockGetTransactionCount.mockImplementation(async (args) => {
       callCount++;
-      // detectStuckNonce in withRetry: latest=5, pending=7 (stuck!)
-      // detectStuckNonce in unstickWallet: latest=5, pending=7 (still stuck)
-      // After unstick receipt, nonce fetch for the actual tx
-      if (callCount <= 4) {
-        // Promise.all calls are interleaved — use blockTag to distinguish
+      // First 4 calls: detectStuckNonce initial + re-check (stuck both times)
+      // Then unstickWalletSingle calls detectStuckNonce again (4 more calls, stuck)
+      // After unstick receipt, next detectStuckNonce loop check returns clean
+      if (callCount <= 8) {
         return args.blockTag === "latest" ? 5 : 7;
       }
-      // Post-unstick nonce fetch
+      // Post-unstick: all clean
       return 6;
     });
 
     mockSendTransaction.mockResolvedValue("0xunstick" as Hex);
     mockWriteContract.mockResolvedValue("0xactual_tx" as Hex);
 
-    const hash = await clientModule.writeContractWithRetry({ test: true });
+    const hash = await runWithTimers(clientModule.writeContractWithRetry({ test: true }));
 
     expect(hash).toBe("0xactual_tx");
     expect(mockSendTransaction).toHaveBeenCalledOnce(); // unstick self-transfer
@@ -200,7 +297,7 @@ describe("writeContractWithRetry", () => {
     mockGetTransactionCount.mockResolvedValue(10);
     mockWriteContract.mockRejectedValue(new Error("replacement transaction underpriced"));
 
-    await expect(clientModule.writeContractWithRetry({ test: true }))
+    await expect(runWithTimers(clientModule.writeContractWithRetry({ test: true })))
       .rejects.toThrow("replacement transaction underpriced");
 
     // MAX_RETRIES = 3, so 4 total attempts (0,1,2,3)
@@ -211,7 +308,7 @@ describe("writeContractWithRetry", () => {
     mockGetTransactionCount.mockResolvedValue(10);
     mockWriteContract.mockRejectedValue(new Error("execution reverted: UNAUTHORIZED"));
 
-    await expect(clientModule.writeContractWithRetry({ test: true }))
+    await expect(runWithTimers(clientModule.writeContractWithRetry({ test: true })))
       .rejects.toThrow("execution reverted: UNAUTHORIZED");
 
     expect(mockWriteContract).toHaveBeenCalledOnce();
@@ -225,7 +322,7 @@ describe("sendTxWithRetry", () => {
     mockGetTransactionCount.mockResolvedValue(10);
     mockSendTransaction.mockResolvedValue("0xtx_hash" as Hex);
 
-    const hash = await clientModule.sendTxWithRetry({ test: true });
+    const hash = await runWithTimers(clientModule.sendTxWithRetry({ test: true }));
     expect(hash).toBe("0xtx_hash");
   });
 
@@ -235,7 +332,7 @@ describe("sendTxWithRetry", () => {
       .mockRejectedValueOnce(new Error("NONCE_EXPIRED"))
       .mockResolvedValueOnce("0xretried" as Hex);
 
-    const hash = await clientModule.sendTxWithRetry({ test: true });
+    const hash = await runWithTimers(clientModule.sendTxWithRetry({ test: true }));
 
     expect(hash).toBe("0xretried");
     expect(mockSendTransaction).toHaveBeenCalledTimes(2);
@@ -267,10 +364,14 @@ describe("waitForReceipt", () => {
       if (args.blockTag === "pending") return 7;
       return 5;
     });
-    mockSendTransaction.mockResolvedValue("0xunstick" as Hex);
+    mockSendTransaction.mockImplementation(async () => {
+      // After unstick, simulate nonces becoming clean
+      mockGetTransactionCount.mockResolvedValue(7);
+      return "0xunstick" as Hex;
+    });
 
     // Still throws (the original tx is lost), but unstick was attempted
-    await expect(clientModule.waitForReceipt("0xstuck" as Hex)).rejects.toThrow("Timed out");
-    expect(mockSendTransaction).toHaveBeenCalledOnce(); // unstick attempt
+    await expect(runWithTimers(clientModule.waitForReceipt("0xstuck" as Hex))).rejects.toThrow("Timed out");
+    expect(mockSendTransaction).toHaveBeenCalled(); // unstick attempt
   });
 });
