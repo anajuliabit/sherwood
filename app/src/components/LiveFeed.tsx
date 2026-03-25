@@ -344,7 +344,7 @@ export default function LiveFeed({
                   fontFamily: "var(--font-mono)",
                 }}
               >
-                {item.time} // {item.source}
+                {item.time} {"// "}{item.source}
               </div>
             </div>
           </div>

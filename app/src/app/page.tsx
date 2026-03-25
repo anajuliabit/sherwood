@@ -58,7 +58,7 @@ export default async function Home() {
           <section id="how-it-works" className="py-32 border-t border-white/15 relative">
             <div className="section-header">
               <span className="font-[family-name:var(--font-plus-jakarta)] text-[var(--color-accent)] text-xs">
-                //
+                {"//"}
               </span>
               <h2 className="text-4xl font-medium tracking-tight">
                 How It Works
@@ -135,7 +135,7 @@ export default async function Home() {
           <section id="agents" className="py-32 border-t border-white/15 relative">
             <div className="section-header">
               <span className="font-[family-name:var(--font-plus-jakarta)] text-[var(--color-accent)] text-xs">
-                //
+                {"//"}
               </span>
               <h2 className="text-4xl font-medium tracking-tight">
                 Onchain. Multiplayer. Agentic.
@@ -239,7 +239,7 @@ export default async function Home() {
           <section id="syndicates" className="py-32 border-t border-white/15 relative">
             <div className="section-header">
               <span className="font-[family-name:var(--font-plus-jakarta)] text-[var(--color-accent)] text-xs">
-                //
+                {"//"}
               </span>
               <h2 className="text-4xl font-medium tracking-tight">
                 Live Syndicates
@@ -268,7 +268,7 @@ export default async function Home() {
                             <Link href={`/syndicate/${s.subdomain}`} className="syndicate-row-link">
                               {s.name}{" "}
                               <span className="text-white/30 ml-2">
-                                // 0x{s.vault.slice(2, 6)}...
+                                {"// "}0x{s.vault.slice(2, 6)}...
                               </span>
                             </Link>
                           </td>

@@ -103,7 +103,7 @@ export default function WithdrawModal({
         },
         {
           onError: (err) => {
-            const msg = (err as any).shortMessage || "Transaction was rejected or reverted.";
+            const msg = (err as { shortMessage?: string }).shortMessage || "Transaction was rejected or reverted.";
             setErrorMsg(msg);
             setStep("error");
           },
@@ -120,7 +120,7 @@ export default function WithdrawModal({
         },
         {
           onError: (err) => {
-            const msg = (err as any).shortMessage || "Transaction was rejected or reverted.";
+            const msg = (err as { shortMessage?: string }).shortMessage || "Transaction was rejected or reverted.";
             setErrorMsg(msg);
             setStep("error");
           },
