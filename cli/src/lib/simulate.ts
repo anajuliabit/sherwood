@@ -12,6 +12,7 @@ import chalk from "chalk";
 import { getPublicClient } from "./client.js";
 import { getChain } from "./network.js";
 import { getGovernorAddress } from "./governor.js";
+import type { GovernorParams } from "./governor.js";
 import { SYNDICATE_VAULT_ABI, ERC20_ABI, SWAP_ROUTER_ABI } from "./abis.js";
 import { TOKENS, MOONWELL, UNISWAP, SHERWOOD, AERODROME, VENICE, STRATEGY_TEMPLATES } from "./addresses.js";
 import type { BatchCall } from "./batch.js";
@@ -41,8 +42,27 @@ export interface SimulationResult {
   totalGasUsed: number;
   callResults: SimulationCallResult[];
   warnings: string[];
+  risks: RiskFlag[];
   source: "api" | "eth_call";
   errorMessage?: string;
+}
+
+// ── Risk analysis types ─────────────────────────────────
+
+export type RiskLevel = "critical" | "warning" | "info";
+
+export interface RiskFlag {
+  level: RiskLevel;
+  code: string;
+  message: string;
+  callIndex?: number;
+}
+
+export interface RiskContext {
+  vault?: Address;
+  performanceFeeBps?: bigint;
+  strategyDuration?: bigint;
+  governorParams?: GovernorParams;
 }
 
 // ── Moonwell cToken ABI fragment (not in main abis.ts) ───
@@ -405,6 +425,226 @@ function safeCall<T>(fn: () => T): T | null {
   }
 }
 
+// ── Raw calldata decoder (for risk analysis) ─────────────
+
+interface DecodedCall {
+  functionName: string;
+  args: readonly unknown[];
+}
+
+/**
+ * Decode calldata into raw { functionName, args } for risk inspection.
+ * Same ABI candidate logic as decodeCallData(), but returns typed values
+ * instead of a formatted display string.
+ */
+function decodeCallArgs(target: Address, data: Hex): DecodedCall | null {
+  if (data.length < 10) return null;
+
+  const targetLower = target.toLowerCase();
+  type AbiEntry = { abi: readonly unknown[] };
+  const candidates: AbiEntry[] = [];
+
+  const mw = safeCall(() => MOONWELL());
+  if (mw) {
+    const isMToken = [mw.mUSDC, mw.mWETH, mw.mCbETH, mw.mWstETH, mw.mCbBTC, mw.mDAI, mw.mAERO]
+      .some((a) => a.toLowerCase() === targetLower);
+    if (isMToken) candidates.push({ abi: MOONWELL_CTOKEN_ABI });
+    if (mw.COMPTROLLER.toLowerCase() === targetLower) candidates.push({ abi: MOONWELL_COMPTROLLER_ABI });
+  }
+
+  const uni = safeCall(() => UNISWAP());
+  if (uni && uni.SWAP_ROUTER.toLowerCase() === targetLower) {
+    candidates.push({ abi: SWAP_ROUTER_ABI });
+    candidates.push({ abi: SWAP_ROUTER_SINGLE_ABI });
+  }
+
+  candidates.push({ abi: ERC20_ABI });
+
+  for (const { abi } of candidates) {
+    try {
+      const decoded = decodeFunctionData({ abi: abi as readonly unknown[], data });
+      return { functionName: decoded.functionName, args: decoded.args as readonly unknown[] };
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+// ── Risk analysis engine ─────────────────────────────────
+
+/**
+ * Analyze simulation results for semantic risks.
+ * Pure function — no chain calls. Checks each call against the known
+ * address registry and flags dangerous patterns.
+ */
+export function analyzeRisk(
+  calls: BatchCall[],
+  callResults: SimulationCallResult[],
+  context?: RiskContext,
+): RiskFlag[] {
+  const risks: RiskFlag[] = [];
+  const labels = buildLabelMap();
+  const vaultLower = context?.vault?.toLowerCase();
+
+  const isKnown = (addr: string): boolean => {
+    const lower = addr.toLowerCase();
+    return labels.has(lower) || lower === vaultLower;
+  };
+
+  // ── Per-call checks ──
+
+  let allTargetsVerified = true;
+  let allCallsDecoded = true;
+
+  for (let i = 0; i < calls.length; i++) {
+    const call = calls[i];
+    const result = callResults[i];
+    const callNum = i + 1;
+
+    // Simulation failure
+    if (result && !result.success) {
+      risks.push({
+        level: "critical",
+        code: "SIMULATION_FAILED",
+        message: `Call #${callNum} to ${labeledAddr(call.target)} reverted during simulation`,
+        callIndex: i,
+      });
+    }
+
+    // Unknown target
+    const targetKnown = isKnown(call.target);
+    if (!targetKnown) {
+      allTargetsVerified = false;
+      risks.push({
+        level: "critical",
+        code: "UNKNOWN_TARGET",
+        message: `Call #${callNum} targets ${labeledAddr(call.target)} which is not in the known address registry`,
+        callIndex: i,
+      });
+    }
+
+    // Decode calldata for inspection
+    const decoded = decodeCallArgs(call.target, call.data);
+
+    if (!decoded) {
+      allCallsDecoded = false;
+      if (!targetKnown) {
+        risks.push({
+          level: "critical",
+          code: "UNDECODED_CALLDATA",
+          message: `Call #${callNum} has unrecognized calldata (selector ${call.data.slice(0, 10)}) targeting unknown contract`,
+          callIndex: i,
+        });
+      }
+      continue;
+    }
+
+    // transfer(to, amount) → check 'to'
+    if (decoded.functionName === "transfer" && decoded.args.length >= 2) {
+      const to = decoded.args[0] as string;
+      if (typeof to === "string" && to.startsWith("0x") && !isKnown(to)) {
+        risks.push({
+          level: "critical",
+          code: "TRANSFER_TO_UNKNOWN",
+          message: `Call #${callNum} transfer() sends funds to ${truncAddr(to)} which is not a known protocol`,
+          callIndex: i,
+        });
+      }
+    }
+
+    // transferFrom(from, to, amount) → check 'to'
+    if (decoded.functionName === "transferFrom" && decoded.args.length >= 3) {
+      const to = decoded.args[1] as string;
+      if (typeof to === "string" && to.startsWith("0x") && !isKnown(to)) {
+        risks.push({
+          level: "critical",
+          code: "TRANSFER_FROM_TO_UNKNOWN",
+          message: `Call #${callNum} transferFrom() sends funds to ${truncAddr(to)} which is not a known protocol`,
+          callIndex: i,
+        });
+      }
+    }
+
+    // approve(spender, amount) → check 'spender'
+    if (decoded.functionName === "approve" && decoded.args.length >= 2) {
+      const spender = decoded.args[0] as string;
+      if (typeof spender === "string" && spender.startsWith("0x") && !isKnown(spender)) {
+        risks.push({
+          level: "critical",
+          code: "APPROVE_TO_UNKNOWN",
+          message: `Call #${callNum} approve() grants allowance to ${truncAddr(spender)} which is not a known protocol`,
+          callIndex: i,
+        });
+      }
+    }
+  }
+
+  // ── Proposal parameter checks ──
+
+  if (context?.performanceFeeBps !== undefined) {
+    const fee = context.performanceFeeBps;
+    const maxFee = context.governorParams?.maxPerformanceFeeBps;
+
+    if (maxFee && fee > (maxFee * 80n) / 100n) {
+      risks.push({
+        level: "critical",
+        code: "EXCESSIVE_PERFORMANCE_FEE",
+        message: `Performance fee ${Number(fee) / 100}% is within 20% of the hard cap (${Number(maxFee) / 100}%)`,
+      });
+    } else if (fee > 2000n) {
+      risks.push({
+        level: "warning",
+        code: "HIGH_PERFORMANCE_FEE",
+        message: `Performance fee ${Number(fee) / 100}% exceeds 20% threshold`,
+      });
+    }
+  }
+
+  if (context?.strategyDuration !== undefined) {
+    const dur = context.strategyDuration;
+    if (dur < 3600n) {
+      risks.push({
+        level: "warning",
+        code: "SHORT_STRATEGY_DURATION",
+        message: `Strategy duration ${Number(dur)}s is under 1 hour — flash-loan-style risk`,
+      });
+    }
+    if (dur > 2_592_000n) {
+      risks.push({
+        level: "warning",
+        code: "LONG_STRATEGY_DURATION",
+        message: `Strategy duration ${Number(dur) / 86400} days exceeds 30-day threshold`,
+      });
+    }
+  }
+
+  // ── Summary flags ──
+
+  const hasCritical = risks.some((r) => r.level === "critical");
+  const hasWarning = risks.some((r) => r.level === "warning");
+
+  if (!hasCritical && !hasWarning) {
+    if (allTargetsVerified) {
+      risks.push({
+        level: "info",
+        code: "ALL_TARGETS_VERIFIED",
+        message: "All call targets are verified protocol addresses",
+      });
+    }
+    if (allCallsDecoded) {
+      risks.push({
+        level: "info",
+        code: "ALL_CALLS_DECODED",
+        message: "All calldata successfully decoded",
+      });
+    }
+  }
+
+  return risks;
+}
+
 // ── API simulation ───────────────────────────────────────
 
 const API_URLS: Record<string, string> = {
@@ -491,6 +731,7 @@ async function simulateViaApi(
     totalGasUsed: result.totalGasUsed,
     callResults,
     warnings,
+    risks: [],
     source: "api",
     errorMessage: result.errorMessage ?? undefined,
   };
@@ -533,6 +774,7 @@ async function simulateViaEthCall(
       totalGasUsed: 0,
       callResults,
       warnings: [],
+      risks: [],
       source: "eth_call",
     };
   } catch (err) {
@@ -548,6 +790,7 @@ async function simulateViaEthCall(
       totalGasUsed: 0,
       callResults,
       warnings: [`Batch reverted: ${message.slice(0, 200)}`],
+      risks: [],
       source: "eth_call",
       errorMessage: message,
     };
@@ -560,15 +803,24 @@ export async function simulateBatchCalls(
   vault: Address,
   calls: BatchCall[],
   callType: "execute" | "settlement",
+  riskContext?: RiskContext,
 ): Promise<SimulationResult> {
+  let result: SimulationResult;
+
   try {
-    return await simulateViaApi(vault, calls);
+    result = await simulateViaApi(vault, calls);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.log(DIM(`  Simulation API unavailable (${message}), falling back to eth_call...`));
 
-    return simulateViaEthCall(vault, calls);
+    result = await simulateViaEthCall(vault, calls);
   }
+
+  // Run risk analysis on the results
+  const ctx: RiskContext = { vault, ...riskContext };
+  result.risks = analyzeRisk(calls, result.callResults, ctx);
+
+  return result;
 }
 
 // ── Output formatter ─────────────────────────────────────
@@ -612,8 +864,41 @@ export function printSimulationResult(result: SimulationResult, callType: string
     console.log();
   }
 
+  // ── Risk assessment ──
+  if (result.risks.length > 0) {
+    const criticals = result.risks.filter((r) => r.level === "critical");
+    const warnings = result.risks.filter((r) => r.level === "warning");
+    const infos = result.risks.filter((r) => r.level === "info");
+
+    if (criticals.length > 0) {
+      console.log(chalk.red.bold(`  ✖ CRITICAL RISKS (${criticals.length})`));
+      for (const r of criticals) {
+        const ref = r.callIndex !== undefined ? ` [call #${r.callIndex + 1}]` : "";
+        console.log(chalk.red(`    ✖${ref} ${r.code} — ${r.message}`));
+      }
+      console.log();
+    }
+
+    if (warnings.length > 0) {
+      console.log(chalk.yellow.bold(`  ⚠ WARNINGS (${warnings.length})`));
+      for (const r of warnings) {
+        const ref = r.callIndex !== undefined ? ` [call #${r.callIndex + 1}]` : "";
+        console.log(chalk.yellow(`    ⚠${ref} ${r.code} — ${r.message}`));
+      }
+      console.log();
+    }
+
+    if (criticals.length === 0 && warnings.length === 0 && infos.length > 0) {
+      console.log(G.bold(`  ✓ RISK ASSESSMENT: CLEAN`));
+      for (const r of infos) {
+        console.log(G(`    ✓ ${r.message}`));
+      }
+      console.log();
+    }
+  }
+
   if (result.warnings.length > 0) {
-    console.log(chalk.yellow(`  ⚠ Warnings`));
+    console.log(chalk.yellow(`  ⚠ Simulation Warnings`));
     for (const w of result.warnings) {
       console.log(chalk.yellow(`    - ${w}`));
     }
@@ -621,4 +906,118 @@ export function printSimulationResult(result: SimulationResult, callType: string
   }
 
   SEP();
+}
+
+// ── XMTP escalation ─────────────────────────────────────
+
+/**
+ * Send a simulation risk report to the syndicate's XMTP chat.
+ * Uses RISK_ALERT message type for critical findings, POSITION_UPDATE otherwise.
+ * Fails silently if XMTP is not configured.
+ */
+export async function sendSimulationAlert(
+  subdomain: string,
+  proposalId: bigint,
+  vault: Address,
+  execResult: SimulationResult,
+  settleResult?: SimulationResult,
+): Promise<void> {
+  try {
+    const xmtp = await import("./xmtp.js");
+    const { getAccount } = await import("./client.js");
+
+    const group = await xmtp.getGroup("", subdomain);
+
+    // Collect all risks across both results
+    const allRisks = [...execResult.risks, ...(settleResult?.risks ?? [])];
+    const criticals = allRisks.filter((r) => r.level === "critical");
+    const warnings = allRisks.filter((r) => r.level === "warning");
+
+    const highestLevel: RiskLevel = criticals.length > 0 ? "critical" : warnings.length > 0 ? "warning" : "info";
+
+    // Build markdown report
+    const lines: string[] = [];
+    const statusEmoji = highestLevel === "critical" ? "🚨" : highestLevel === "warning" ? "⚠️" : "✅";
+    const statusText = highestLevel === "critical" ? "RISKS DETECTED" : highestLevel === "warning" ? "WARNINGS" : "CLEAN";
+
+    lines.push(`## ${statusEmoji} Proposal #${proposalId} — Simulation Report`);
+    lines.push(`**Vault**: \`${truncAddr(vault)}\``);
+    lines.push(`**Status**: ${statusText}`);
+    lines.push(`**Source**: ${execResult.source === "api" ? "Tenderly" : "eth_call"}`);
+    lines.push("");
+
+    // Execute calls summary
+    lines.push(`### Execute Calls ${execResult.success ? "✓" : "✖"}`);
+    for (const cr of execResult.callResults) {
+      const icon = cr.success ? "✓" : "✖";
+      const fn = cr.decodedFunction || `${cr.selector}...`;
+      const flag = allRisks.find((r) => r.callIndex === cr.index);
+      const suffix = flag && flag.level === "critical" ? " ← **" + flag.code + "**" : "";
+      lines.push(`${cr.index + 1}. ${icon} \`${fn}\`${suffix}`);
+    }
+    lines.push("");
+
+    // Settlement calls summary (if present)
+    if (settleResult && settleResult.callResults.length > 0) {
+      lines.push(`### Settlement Calls ${settleResult.success ? "✓" : "✖"}`);
+      for (const cr of settleResult.callResults) {
+        const icon = cr.success ? "✓" : "✖";
+        const fn = cr.decodedFunction || `${cr.selector}...`;
+        lines.push(`${cr.index + 1}. ${icon} \`${fn}\``);
+      }
+      lines.push("");
+    }
+
+    // Risk flags
+    if (criticals.length > 0) {
+      lines.push(`### 🚨 Critical Risks`);
+      for (const r of criticals) {
+        const ref = r.callIndex !== undefined ? ` [call #${r.callIndex + 1}]` : "";
+        lines.push(`- **${r.code}**${ref}: ${r.message}`);
+      }
+      lines.push("");
+    }
+
+    if (warnings.length > 0) {
+      lines.push(`### ⚠️ Warnings`);
+      for (const r of warnings) {
+        const ref = r.callIndex !== undefined ? ` [call #${r.callIndex + 1}]` : "";
+        lines.push(`- **${r.code}**${ref}: ${r.message}`);
+      }
+      lines.push("");
+    }
+
+    // Action recommendation
+    if (highestLevel === "critical") {
+      lines.push(`### Action Required`);
+      lines.push(`Recommend **VETO** — critical risks detected.`);
+    } else if (highestLevel === "warning") {
+      lines.push(`### Review Required`);
+      lines.push(`Warnings detected — manual review recommended before execution.`);
+    } else {
+      lines.push(`### ✅ No Risks Detected`);
+      lines.push(`All call targets verified. All calldata decoded. Safe to proceed.`);
+    }
+
+    const markdown = lines.join("\n");
+    const messageType = highestLevel === "critical" ? "RISK_ALERT" as const : "POSITION_UPDATE" as const;
+
+    await xmtp.sendEnvelope(group, {
+      type: messageType,
+      from: getAccount().address,
+      text: markdown,
+      data: {
+        format: "markdown",
+        proposalId: Number(proposalId),
+        vault,
+        riskLevel: highestLevel,
+        riskCodes: allRisks.filter((r) => r.level !== "info").map((r) => r.code),
+        simulationSuccess: execResult.success && (settleResult?.success ?? true),
+      },
+      timestamp: Math.floor(Date.now() / 1000),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.log(chalk.yellow(`  ⚠ Failed to send XMTP alert: ${message.slice(0, 100)}`));
+  }
 }

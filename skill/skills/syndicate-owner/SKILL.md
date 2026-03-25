@@ -6,7 +6,7 @@ model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.2.0'
+  version: '0.3.0'
 ---
 
 # Syndicate Vault Owner — Guardian Agent
@@ -77,6 +77,35 @@ sherwood proposal simulate --vault $VAULT_ADDRESS --execute-calls execute.json -
 
 The command outputs a human-readable report with per-call pass/fail status, gas usage, and decoded function names. If the Tenderly API is unavailable, it falls back to a basic `eth_call` check.
 
+**Step 3b — Review risk analysis.** The simulation automatically runs semantic risk analysis on every call. Look for these sections in the output:
+
+- **`✓ RISK ASSESSMENT: CLEAN`** — All targets are known protocols, all calldata decoded. Safe to proceed.
+- **`⚠ WARNINGS (n)`** — Review carefully. May include high fees, extreme durations.
+- **`✖ CRITICAL RISKS (n)`** — **VETO immediately.** Includes transfers to unknown addresses, undecoded calldata to unknown contracts.
+
+Risk code reference:
+
+| Code | Level | Meaning |
+|------|-------|---------|
+| `SIMULATION_FAILED` | critical | Call reverted during fork simulation |
+| `UNKNOWN_TARGET` | critical | Call targets a contract not in the known address registry |
+| `UNDECODED_CALLDATA` | critical | Calldata cannot be decoded AND target is unknown |
+| `TRANSFER_TO_UNKNOWN` | critical | `transfer()` sends funds to an unlabeled address |
+| `TRANSFER_FROM_TO_UNKNOWN` | critical | `transferFrom()` sends funds to an unlabeled address |
+| `APPROVE_TO_UNKNOWN` | critical | `approve()` grants allowance to an unlabeled address |
+| `EXCESSIVE_PERFORMANCE_FEE` | critical | Fee within 20% of the governor hard cap |
+| `HIGH_PERFORMANCE_FEE` | warning | Fee exceeds 20% |
+| `SHORT_STRATEGY_DURATION` | warning | Duration under 1 hour |
+| `LONG_STRATEGY_DURATION` | warning | Duration over 30 days |
+| `ALL_TARGETS_VERIFIED` | info | All targets are known protocols |
+| `ALL_CALLS_DECODED` | info | All calldata successfully decoded |
+
+**Step 3c — Notify the operator (optional).** Send the risk report to the syndicate's XMTP chat so the human operator is alerted:
+```bash
+sherwood proposal simulate --id <PROPOSAL_ID> --notify <syndicate-name>
+```
+This sends a markdown-formatted `RISK_ALERT` message to the group chat with per-call results and risk flags.
+
 For deeper debugging, you can also simulate individual calls directly:
 ```bash
 cast call --rpc-url $RPC_URL <target> <calldata>
@@ -137,20 +166,16 @@ New proposal detected
 |   +-- Cannot fetch --> VETO
 |   +-- Fetched OK
 |       |
-|       +-- Decode proposal calls
-|           +-- Cannot decode --> VETO
-|           +-- Decoded OK
-|               |
-|               +-- Simulate on fork
-|                   +-- Simulation FAILS --> VETO immediately
-|                   +-- Simulation SUCCEEDS
-|                       |
-|                       +-- Calls target unknown/unverified contracts --> VETO
-|                       +-- Calls include approve() or transfer() to external addresses --> VETO
-|                       +-- Large fund movements outside known protocols --> VETO
-|                       +-- performanceFeeBps > 2000 (20%) --> REVIEW CAREFULLY
-|                       +-- strategyDuration > 30 days --> REVIEW CAREFULLY
-|                       +-- All checks pass --> LET PASS (optionally vote FOR as signal)
+|       +-- Run: sherwood proposal simulate --id <ID> [--notify <name>]
+|           |
+|           +-- Any CRITICAL risk code in output --> VETO immediately
+|           |     (SIMULATION_FAILED, UNKNOWN_TARGET, TRANSFER_TO_UNKNOWN,
+|           |      APPROVE_TO_UNKNOWN, UNDECODED_CALLDATA, EXCESSIVE_PERFORMANCE_FEE)
+|           |
+|           +-- Only WARNING codes --> REVIEW CAREFULLY
+|           |     (HIGH_PERFORMANCE_FEE, SHORT_STRATEGY_DURATION, LONG_STRATEGY_DURATION)
+|           |
+|           +-- RISK ASSESSMENT: CLEAN --> LET PASS (optionally vote FOR as signal)
 ```
 
 When in doubt, **VETO**. A vetoed legitimate proposal can be resubmitted. Drained funds cannot be recovered.
@@ -271,12 +296,14 @@ Run these checks on a recurring basis. Proposal monitoring is the highest priori
 # 1. Check for pending proposals
 sherwood proposal list --state pending
 
-# 2. For each: simulate via Tenderly
-sherwood proposal simulate --id <PROPOSAL_ID>
+# 2. For each: simulate via Tenderly and notify the operator
+sherwood proposal simulate --id <PROPOSAL_ID> --notify <syndicate-name>
 
-# 3. Fetch metadata, apply decision tree
-# 4. Veto anything suspicious or that fails simulation
-# 5. Log results
+# 3. Check output for risk codes:
+#    - CRITICAL RISKS → VETO immediately
+#    - WARNINGS → fetch metadata, review carefully
+#    - RISK ASSESSMENT: CLEAN → let pass
+# 4. Log results
 ```
 
 ### Hourly heartbeat (strategy health)

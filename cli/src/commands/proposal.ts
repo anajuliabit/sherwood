@@ -41,7 +41,8 @@ import {
 } from "../lib/governor.js";
 import type { BatchCall } from "../lib/governor.js";
 import { formatDurationShort as formatDuration, formatShares, formatUSDC, parseBigIntArg } from "../lib/format.js";
-import { simulateBatchCalls, printSimulationResult } from "../lib/simulate.js";
+import { simulateBatchCalls, printSimulationResult, sendSimulationAlert } from "../lib/simulate.js";
+import type { RiskContext } from "../lib/simulate.js";
 
 const G = chalk.green;
 const W = chalk.white;
@@ -145,14 +146,21 @@ export function registerProposalCommands(program: Command): void {
 
         // ── Simulate (optional) ──
         if (opts.simulate) {
+          // Build risk context from the proposal parameters
+          let createRiskContext: RiskContext = { vault, performanceFeeBps, strategyDuration };
+          try {
+            const govParams = await getGovernorParams();
+            createRiskContext = { ...createRiskContext, governorParams: govParams };
+          } catch { /* non-fatal — skip parameter bounds checks */ }
+
           const simSpinner = ora({ text: W("Simulating execute calls..."), color: "green" }).start();
-          const execResult = await simulateBatchCalls(vault, executeCalls, "execute");
+          const execResult = await simulateBatchCalls(vault, executeCalls, "execute", createRiskContext);
           simSpinner.stop();
           printSimulationResult(execResult, "execute");
 
           if (settleCalls.length > 0) {
             const settleSpinner = ora({ text: W("Simulating settlement calls..."), color: "green" }).start();
-            const settleResult = await simulateBatchCalls(vault, settleCalls, "settlement");
+            const settleResult = await simulateBatchCalls(vault, settleCalls, "settlement", createRiskContext);
             settleSpinner.stop();
             printSimulationResult(settleResult, "settlement");
 
@@ -164,6 +172,13 @@ export function registerProposalCommands(program: Command): void {
 
           if (!execResult.success && !opts.force) {
             console.error(chalk.red("\n  ✖ Execution simulation failed. Use --force to submit anyway."));
+            process.exit(1);
+          }
+
+          // Block on critical risks
+          const hasCriticalRisks = execResult.risks.some((r) => r.level === "critical");
+          if (hasCriticalRisks && !opts.force) {
+            console.error(chalk.red("\n  ✖ Critical risks detected. Use --force to submit anyway."));
             process.exit(1);
           }
         }
@@ -453,11 +468,17 @@ export function registerProposalCommands(program: Command): void {
         if (opts.dryRun) {
           const p = await getProposal(proposalId);
           const execCalls = await getExecuteCalls(proposalId);
+          const dryRunContext: RiskContext = {
+            vault: p.vault,
+            performanceFeeBps: p.performanceFeeBps,
+            strategyDuration: p.strategyDuration,
+          };
           spinner.text = W("Simulating execution...");
-          const result = await simulateBatchCalls(p.vault, execCalls, "execute");
+          const result = await simulateBatchCalls(p.vault, execCalls, "execute", dryRunContext);
           spinner.stop();
           printSimulationResult(result, "execute");
-          process.exit(result.success ? 0 : 1);
+          const hasCritical = result.risks.some((r) => r.level === "critical");
+          process.exit(result.success && !hasCritical ? 0 : 1);
         }
 
         spinner.text = W("Executing proposal...");
@@ -587,15 +608,18 @@ export function registerProposalCommands(program: Command): void {
     .option("--vault <address>", "Vault address (required with --execute-calls)")
     .option("--execute-calls <path>", "Path to JSON execute calls file")
     .option("--settle-calls <path>", "Path to JSON settlement calls file")
+    .option("--notify <subdomain>", "Send results to syndicate XMTP chat")
     .action(async (opts) => {
       try {
         let vault: Address;
         let executeCalls: BatchCall[];
         let settlementCalls: BatchCall[] = [];
+        let riskContext: RiskContext = {};
+        let proposalId: bigint | undefined;
 
         if (opts.id) {
-          // By proposal ID — fetch calls from chain
-          const proposalId = parseBigIntArg(opts.id, "proposal ID");
+          // By proposal ID — fetch calls and build full risk context
+          proposalId = parseBigIntArg(opts.id, "proposal ID");
           const spinner = ora("Loading proposal...").start();
 
           const p = await getProposal(proposalId);
@@ -603,10 +627,21 @@ export function registerProposalCommands(program: Command): void {
           executeCalls = await getExecuteCalls(proposalId);
           settlementCalls = await getSettlementCalls(proposalId);
 
+          riskContext = {
+            vault,
+            performanceFeeBps: p.performanceFeeBps,
+            strategyDuration: p.strategyDuration,
+          };
+
+          try {
+            const govParams = await getGovernorParams();
+            riskContext.governorParams = govParams;
+          } catch { /* non-fatal */ }
+
           spinner.stop();
           console.log(DIM(`\n  Simulating proposal #${proposalId} on vault ${vault.slice(0, 10)}...`));
         } else if (opts.executeCalls) {
-          // By call files — validate vault is provided
+          // By call files — minimal risk context (no proposal params)
           if (!opts.vault || !isAddress(opts.vault)) {
             console.error(chalk.red("\n  ✖ --vault is required when using --execute-calls"));
             process.exit(1);
@@ -616,6 +651,7 @@ export function registerProposalCommands(program: Command): void {
           if (opts.settleCalls) {
             settlementCalls = parseCallsFile(opts.settleCalls);
           }
+          riskContext = { vault };
         } else {
           console.error(chalk.red("\n  ✖ Provide --id <proposalId> or --execute-calls <path>"));
           process.exit(1);
@@ -623,23 +659,31 @@ export function registerProposalCommands(program: Command): void {
 
         // Simulate execute calls
         const spinner = ora({ text: W("Simulating execute calls..."), color: "green" }).start();
-        const execResult = await simulateBatchCalls(vault, executeCalls, "execute");
+        const execResult = await simulateBatchCalls(vault, executeCalls, "execute", riskContext);
         spinner.stop();
         printSimulationResult(execResult, "execute");
 
         // Simulate settlement calls if present
+        let settleResult;
         if (settlementCalls.length > 0) {
           const settleSpinner = ora({ text: W("Simulating settlement calls..."), color: "green" }).start();
-          const settleResult = await simulateBatchCalls(vault, settlementCalls, "settlement");
+          settleResult = await simulateBatchCalls(vault, settlementCalls, "settlement", riskContext);
           settleSpinner.stop();
           printSimulationResult(settleResult, "settlement");
-
-          if (!settleResult.success) {
-            process.exit(1);
-          }
         }
 
-        if (!execResult.success) {
+        // Send XMTP notification if requested
+        if (opts.notify && proposalId !== undefined) {
+          const notifySpinner = ora({ text: W("Sending XMTP alert..."), color: "green" }).start();
+          await sendSimulationAlert(opts.notify, proposalId, vault, execResult, settleResult);
+          notifySpinner.succeed(G("Risk report sent to chat"));
+        }
+
+        // Exit with failure code if simulation or risks are critical
+        const hasCritical = execResult.risks.some((r) => r.level === "critical")
+          || (settleResult?.risks.some((r) => r.level === "critical") ?? false);
+
+        if (!execResult.success || (settleResult && !settleResult.success) || hasCritical) {
           process.exit(1);
         }
       } catch (err) {
