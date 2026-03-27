@@ -7,10 +7,13 @@ export default function HeroVideo() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    // Video may have loaded before hydration — check immediately
-    if (videoRef.current && videoRef.current.readyState >= 3) {
-      setLoaded(true);
-    }
+    // Video may have loaded before hydration — check on next frame
+    const id = requestAnimationFrame(() => {
+      if (videoRef.current && videoRef.current.readyState >= 3) {
+        setLoaded(true);
+      }
+    });
+    return () => cancelAnimationFrame(id);
   }, []);
 
   return (

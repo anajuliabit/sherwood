@@ -11,10 +11,8 @@ import {
   CHAINS,
   type ChainEntry,
   getPublicClient,
-  getAddresses,
   SYNDICATE_FACTORY_ABI,
   SYNDICATE_VAULT_ABI,
-  SYNDICATE_GOVERNOR_ABI,
   ERC20_ABI,
   IDENTITY_REGISTRY_ABI,
   L2_REGISTRY_ABI,
@@ -353,7 +351,7 @@ async function resolveOnChain(
     agentAddresses = await fetchOnChainAgents(chainId, vault);
   }
 
-  let agents: AgentInfo[] = [];
+  const agents: AgentInfo[] = [];
   if (agentAddresses.length > 0) {
     const agentCalls = agentAddresses.map((addr) => ({
       address: vault,
