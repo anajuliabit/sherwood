@@ -119,6 +119,56 @@ async function buildInitDataForTemplate(
     const decimals = assetSymbol.toUpperCase() === "USDC" ? 6 : 18;
     const assetAmount = parseUnits(opts.amount as string, decimals);
     const agent = (opts.agent as Address) || getAccount().address;
+    const isSingleHop = !!opts.singleHop;
+
+    // Auto-quote minVVV if not specified (non-direct paths only)
+    let minVVV = 0n;
+    if (!isDirect) {
+      if (opts.minVvv) {
+        minVVV = parseUnits(opts.minVvv as string, 18);
+      } else {
+        // Quote expected VVV out and apply 5% slippage
+        const publicClient = getPublicClient();
+        const aeroRouterAbi = [{
+          name: "getAmountsOut",
+          type: "function",
+          stateMutability: "view",
+          inputs: [
+            { name: "amountIn", type: "uint256" },
+            { name: "routes", type: "tuple[]", components: [
+              { name: "from", type: "address" },
+              { name: "to", type: "address" },
+              { name: "stable", type: "bool" },
+              { name: "factory", type: "address" },
+            ]},
+          ],
+          outputs: [{ name: "amounts", type: "uint256[]" }],
+        }] as const;
+
+        const routes = isSingleHop
+          ? [{ from: asset, to: vvv, stable: false, factory: AERODROME().FACTORY }]
+          : [
+              { from: asset, to: TOKENS().WETH, stable: false, factory: AERODROME().FACTORY },
+              { from: TOKENS().WETH, to: vvv, stable: false, factory: AERODROME().FACTORY },
+            ];
+
+        try {
+          const amounts = await publicClient.readContract({
+            address: AERODROME().ROUTER,
+            abi: aeroRouterAbi,
+            functionName: "getAmountsOut",
+            args: [assetAmount, routes],
+          });
+          const expectedVVV = amounts[amounts.length - 1];
+          // 5% slippage: minVVV = expectedVVV * 95 / 100
+          minVVV = (expectedVVV * 95n) / 100n;
+          console.log(chalk.dim(`  Auto-quoted minVVV: ${(Number(minVVV) / 1e18).toFixed(4)} VVV (5% slippage on ~${(Number(expectedVVV) / 1e18).toFixed(4)} VVV)`));
+        } catch {
+          console.error(chalk.red("Could not quote USDC→VVV price. Pass --min-vvv <amount> manually."));
+          process.exit(1);
+        }
+      }
+    }
 
     const params: veniceBuilder.VeniceInferenceInitParams = {
       asset,
@@ -129,9 +179,9 @@ async function buildInitDataForTemplate(
       aeroFactory: isDirect ? ZERO : AERODROME().FACTORY,
       agent,
       assetAmount,
-      minVVV: isDirect ? 0n : parseUnits((opts.minVvv as string) || "0", 18),
+      minVVV,
       deadlineOffset: 300n,
-      singleHop: !!opts.singleHop,
+      singleHop: isSingleHop,
     };
 
     return {
@@ -696,6 +746,7 @@ export function registerStrategyTemplateCommands(strategy: Command): void {
           executeCalls, settleCalls,
         );
         proposeSpinner.succeed(`Proposal #${proposalId} created`);
+        console.log(`Proposal #${proposalId}`);
         console.log(chalk.dim(`  Tx: ${getExplorerUrl(hash)}`));
         console.log(chalk.dim(`  Clone: ${clone}`));
       } catch (err) {

@@ -92,7 +92,7 @@ export async function runPhase10(
         console.log(`  [${syndicate.subdomain}] Executing proposal #${onChain.id}...`);
         execSherwood(
           creatorHome,
-          ["proposal", "execute", "--id", String(onChain.id), "--vault", vault],
+          ["proposal", "execute", "--id", String(onChain.id)],
           config,
           logger,
           creator.index,
@@ -119,7 +119,7 @@ export async function runPhase10(
         console.log(`  [${syndicate.subdomain}] Settling proposal #${onChain.id}...`);
         execSherwood(
           creatorHome,
-          ["proposal", "settle", "--id", String(onChain.id), "--vault", vault],
+          ["proposal", "settle", "--id", String(onChain.id)],
           config,
           logger,
           creator.index,
