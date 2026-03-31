@@ -69,7 +69,7 @@ function getDbEncryptionKey(privateKey: string): Uint8Array {
 function getDbPath(): string {
   const dir = path.join(homedir(), ".sherwood", "xmtp");
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  return dir;
+  return path.join(dir, "xmtp.db3");
 }
 
 function ethIdentifier(address: string): Identifier {

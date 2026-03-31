@@ -110,6 +110,8 @@ function filterEnv(env: NodeJS.ProcessEnv): Record<string, string> {
 export function parseAgentId(output: string): number | undefined {
   // Pattern: "#123" after "registered:" or "identity #"
   const patterns = [
+    /Agent0 ID:\s*\d+:(\d+)/i,   // "Agent0 ID: 8453:38255" → 38255
+    /--agent-id\s+(\d+)/i,        // "sherwood syndicate create --agent-id 38255"
     /registered[:\s]+#(\d+)/i,
     /identity #(\d+)/i,
     /agent.*?#(\d+)/i,
