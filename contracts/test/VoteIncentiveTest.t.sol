@@ -174,6 +174,7 @@ contract VoteIncentiveTest is Test {
 
         // Flip to epoch 2
         vm.warp(voter.getEpochEnd(1) + 2);
+        vm.prank(owner);
         voter.flipEpoch();
 
         // Vote in epoch 2
@@ -187,6 +188,7 @@ contract VoteIncentiveTest is Test {
 
         // Flip to epoch 3 so epoch 2 votes can be claimed
         vm.warp(voter.getEpochEnd(2) + 2);
+        vm.prank(owner);
         voter.flipEpoch();
 
         uint256 user1BalanceBefore = bribeToken1.balanceOf(user1);
@@ -216,6 +218,7 @@ contract VoteIncentiveTest is Test {
 
         // Flip to epoch 2
         vm.warp(voter.getEpochEnd(1) + 2);
+        vm.prank(owner);
         voter.flipEpoch();
 
         // Both users vote in epoch 2
@@ -232,6 +235,7 @@ contract VoteIncentiveTest is Test {
 
         // Flip to epoch 3
         vm.warp(voter.getEpochEnd(2) + 2);
+        vm.prank(owner);
         voter.flipEpoch();
 
         address[] memory tokens = new address[](1);
@@ -271,6 +275,7 @@ contract VoteIncentiveTest is Test {
 
         // Flip to epoch 2
         vm.warp(voter.getEpochEnd(1) + 2);
+        vm.prank(owner);
         voter.flipEpoch();
 
         // Vote in epoch 2
@@ -284,6 +289,7 @@ contract VoteIncentiveTest is Test {
 
         // Flip to epoch 3 so epoch 2 claims are allowed
         vm.warp(voter.getEpochEnd(2) + 2);
+        vm.prank(owner);
         voter.flipEpoch();
 
         address[] memory tokens = new address[](1);
@@ -307,6 +313,7 @@ contract VoteIncentiveTest is Test {
 
         // Flip to epoch 2, vote
         vm.warp(voter.getEpochEnd(1) + 2);
+        vm.prank(owner);
         voter.flipEpoch();
 
         uint256[] memory syndicateIds = new uint256[](1);
@@ -318,6 +325,7 @@ contract VoteIncentiveTest is Test {
 
         // Flip to epoch 3
         vm.warp(voter.getEpochEnd(2) + 2);
+        vm.prank(owner);
         voter.flipEpoch();
 
         address[] memory tokens = new address[](2);
@@ -348,6 +356,7 @@ contract VoteIncentiveTest is Test {
 
         // Flip to epoch 2
         vm.warp(voter.getEpochEnd(1) + 2);
+        vm.prank(owner);
         voter.flipEpoch();
 
         // Vote 60/40 split in epoch 2
@@ -363,6 +372,7 @@ contract VoteIncentiveTest is Test {
 
         // Flip to epoch 3
         vm.warp(voter.getEpochEnd(2) + 2);
+        vm.prank(owner);
         voter.flipEpoch();
 
         address[] memory tokens = new address[](1);
@@ -394,6 +404,7 @@ contract VoteIncentiveTest is Test {
 
         // Flip to epoch 2, vote
         vm.warp(voter.getEpochEnd(1) + 2);
+        vm.prank(owner);
         voter.flipEpoch();
 
         uint256[] memory syndicateIds = new uint256[](1);
@@ -405,6 +416,7 @@ contract VoteIncentiveTest is Test {
 
         // Flip to epoch 3
         vm.warp(voter.getEpochEnd(2) + 2);
+        vm.prank(owner);
         voter.flipEpoch();
 
         // After epoch 2 ends, should show full amount
@@ -434,6 +446,7 @@ contract VoteIncentiveTest is Test {
 
         // Flip to epoch 2
         vm.warp(voter.getEpochEnd(1) + 2);
+        vm.prank(owner);
         voter.flipEpoch();
 
         // Vote in epoch 2
@@ -449,6 +462,7 @@ contract VoteIncentiveTest is Test {
 
         // Flip to epoch 3
         vm.warp(voter.getEpochEnd(2) + 2);
+        vm.prank(owner);
         voter.flipEpoch();
 
         // Claim all at once

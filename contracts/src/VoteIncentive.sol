@@ -36,6 +36,9 @@ contract VoteIncentive is Ownable, ReentrancyGuard {
 
     // ==================== CONSTANTS ====================
 
+    /// @notice Basis points denominator
+    uint256 public constant BASIS_POINTS = 10000;
+
     /// @notice Deposit deadline offset (incentives must be deposited before epoch starts)
     uint256 public constant DEPOSIT_DEADLINE_OFFSET = 0; // Deposit during previous epoch
 
@@ -295,7 +298,7 @@ contract VoteIncentive is Ownable, ReentrancyGuard {
         for (uint256 i = 0; i < allocation.syndicateIds.length; i++) {
             if (allocation.syndicateIds[i] == syndicateId) {
                 uint256 totalVotingPower = votingEscrow.balanceOfNFTAt(tokenId, voter.getEpochStart(epoch));
-                voterVotes = (totalVotingPower * allocation.weights[i]) / 10000;
+                voterVotes = (totalVotingPower * allocation.weights[i]) / BASIS_POINTS;
                 break;
             }
         }
@@ -321,7 +324,7 @@ contract VoteIncentive is Ownable, ReentrancyGuard {
         for (uint256 i = 0; i < allocation.syndicateIds.length; i++) {
             if (allocation.syndicateIds[i] == syndicateId) {
                 uint256 totalVotingPower = votingEscrow.balanceOfNFTAt(tokenId, voter.getEpochStart(epoch));
-                voterVotes = (totalVotingPower * allocation.weights[i]) / 10000;
+                voterVotes = (totalVotingPower * allocation.weights[i]) / BASIS_POINTS;
                 break;
             }
         }

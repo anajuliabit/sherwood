@@ -270,7 +270,7 @@ contract RewardsDistributor is Ownable, ReentrancyGuard {
     /// @dev Get total locked WOOD at a specific timestamp (consistent with per-token snapshots)
     function _calculateTotalLockedAt(uint256 timestamp) internal view returns (uint256 totalLocked) {
         totalLocked = votingEscrow.totalLockedAmountAt(timestamp);
-        if (totalLocked == 0) totalLocked = 1; // Avoid division by zero
+        if (totalLocked == 0) revert DistributionNotReady(); // No locked tokens — cannot distribute
     }
 
     /// @dev Get unclaimed epochs for a tokenId since last claim

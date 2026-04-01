@@ -63,6 +63,7 @@ contract VoterSimpleTest is Test {
 
         uint256 epochEnd = voter.getEpochEnd(1);
         vm.warp(epochEnd + 2);
+        vm.prank(owner);
         voter.flipEpoch();
 
         assertEq(voter.currentEpoch(), 2);

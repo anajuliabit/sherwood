@@ -169,11 +169,15 @@ contract Voter is Ownable, ReentrancyGuard {
         if (votingEscrow.ownerOf(tokenId) != msg.sender) revert NotAuthorized();
         if (syndicateIds.length != weights.length) revert InvalidWeights();
 
-        // Validate weights sum to 10000 basis points (100%)
+        // Validate weights sum to 10000 basis points (100%) and no duplicate syndicate IDs
         uint256 totalWeight = 0;
         for (uint256 i = 0; i < weights.length; i++) {
             totalWeight += weights[i];
             if (!_activeSyndicates.contains(syndicateIds[i])) revert InvalidSyndicateId();
+            // Check for duplicate syndicate IDs
+            for (uint256 j = 0; j < i; j++) {
+                if (syndicateIds[j] == syndicateIds[i]) revert InvalidSyndicateId();
+            }
         }
         if (totalWeight != BASIS_POINTS) revert WeightsSumInvalid();
 
@@ -215,6 +219,7 @@ contract Voter is Ownable, ReentrancyGuard {
     }
 
     function flipEpoch() external {
+        if (msg.sender != minter && msg.sender != owner()) revert NotAuthorized();
         require(block.timestamp >= getEpochEnd(_currentEpoch), "Epoch not finished");
 
         // Snapshot active syndicates for this epoch (used by quorum fallback)

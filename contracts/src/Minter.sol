@@ -455,6 +455,12 @@ contract Minter is Ownable, Pausable, ReentrancyGuard {
 
     /// @dev Distribute gauge allocation to SyndicateGauges proportional to votes
     function _distributeToGauges(uint256 epoch, uint256 gaugeAllocation) internal {
+        // First epoch has no previous votes — send to treasury
+        if (epoch <= 1) {
+            wood.safeTransfer(teamTreasury, gaugeAllocation);
+            return;
+        }
+
         (uint256[] memory syndicateIds, uint256[] memory allocations) = voter.getVoteDistribution(epoch - 1);
 
         // Calculate total allocation weight
