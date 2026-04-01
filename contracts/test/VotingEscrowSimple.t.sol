@@ -2,12 +2,13 @@
 pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
-import {MockWoodToken} from "../src/MockWoodToken.sol";
+import {WoodToken} from "../src/WoodToken.sol";
+import {MockLzEndpoint} from "./mocks/MockLzEndpoint.sol";
 import {VotingEscrow} from "../src/VotingEscrow.sol";
 
 /// @title VotingEscrowSimpleTest — Simplified tests for VotingEscrow contract
 contract VotingEscrowSimpleTest is Test {
-    MockWoodToken public wood;
+    WoodToken public wood;
     VotingEscrow public votingEscrow;
 
     address public owner = address(0x1);
@@ -19,10 +20,11 @@ contract VotingEscrowSimpleTest is Test {
 
     function setUp() public {
         vm.startPrank(owner);
-        wood = new MockWoodToken(owner);
+        MockLzEndpoint lzEndpoint = new MockLzEndpoint();
+        wood = new WoodToken(address(lzEndpoint), owner, owner);
         votingEscrow = new VotingEscrow(address(wood), owner);
 
-        wood.ownerMint(user1, 10000e18);
+        wood.mint(user1, 10000e18);
         vm.stopPrank();
 
         vm.prank(user1);

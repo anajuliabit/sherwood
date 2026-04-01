@@ -2,7 +2,8 @@
 pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
-import {MockWoodToken} from "../src/MockWoodToken.sol";
+import {WoodToken} from "../src/WoodToken.sol";
+import {MockLzEndpoint} from "./mocks/MockLzEndpoint.sol";
 import {VotingEscrow} from "../src/VotingEscrow.sol";
 import {Voter} from "../src/Voter.sol";
 import {Minter} from "../src/Minter.sol";
@@ -10,7 +11,7 @@ import {Minter} from "../src/Minter.sol";
 /// @title MinterSimpleTest — Simplified tests for Minter contract
 /// @notice Tests basic emission functionality without complex struct/enum comparisons
 contract MinterSimpleTest is Test {
-    MockWoodToken public wood;
+    WoodToken public wood;
     VotingEscrow public votingEscrow;
     Voter public voter;
     Minter public minter;
@@ -25,17 +26,18 @@ contract MinterSimpleTest is Test {
     function setUp() public {
         vm.startPrank(owner);
 
-        wood = new MockWoodToken(owner);
+        MockLzEndpoint lzEndpoint = new MockLzEndpoint();
+        // Predict: WoodToken(+0), VotingEscrow(+1), Voter(+2), Minter(+3)
+        uint64 nonce = vm.getNonce(owner);
+        address predictedMinter = vm.computeCreateAddress(owner, nonce + 3);
+        wood = new WoodToken(address(lzEndpoint), owner, predictedMinter);
         votingEscrow = new VotingEscrow(address(wood), owner);
 
-        // Predict minter address for Voter constructor (circular dependency)
-        address predictedMinter = vm.computeCreateAddress(owner, vm.getNonce(owner) + 1);
         voter = new Voter(
             address(votingEscrow), mockSyndicateFactory, block.timestamp, address(wood), predictedMinter, owner
         );
         minter = new Minter(address(wood), address(voter), address(votingEscrow), treasury, owner);
 
-        wood.setMinter(address(minter));
         voter.startVoting();
 
         vm.stopPrank();

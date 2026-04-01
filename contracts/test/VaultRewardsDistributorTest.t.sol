@@ -2,7 +2,8 @@
 pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
-import {MockWoodToken} from "../src/MockWoodToken.sol";
+import {WoodToken} from "../src/WoodToken.sol";
+import {MockLzEndpoint} from "./mocks/MockLzEndpoint.sol";
 import {VotingEscrow} from "../src/VotingEscrow.sol";
 import {Voter} from "../src/Voter.sol";
 import {Minter} from "../src/Minter.sol";
@@ -43,7 +44,7 @@ contract MockVault is ERC20, ERC20Permit, ERC20Votes {
 
 /// @title VaultRewardsDistributorTest — Tests for vault rewards distribution
 contract VaultRewardsDistributorTest is Test {
-    MockWoodToken public wood;
+    WoodToken public wood;
     VotingEscrow public votingEscrow;
     Voter public voter;
     Minter public minter;
@@ -59,23 +60,25 @@ contract VaultRewardsDistributorTest is Test {
     function setUp() public {
         vm.startPrank(owner);
 
-        // 1. Deploy token first
-        wood = new MockWoodToken(owner);
+        // 1. Deploy LZ endpoint + predict minter address
+        MockLzEndpoint lzEndpoint = new MockLzEndpoint();
+        uint64 nonce = vm.getNonce(owner);
+        // Predict: WoodToken(+0), VotingEscrow(+1), Voter(+2), Minter(+3), MockVault(+4), VaultRewardsDistributor(+5)
+        address predictedMinter = vm.computeCreateAddress(owner, nonce + 3);
 
-        // 2. Deploy VotingEscrow
+        // 2. Deploy token with predicted minter
+        wood = new WoodToken(address(lzEndpoint), owner, predictedMinter);
+
+        // 3. Deploy VotingEscrow
         votingEscrow = new VotingEscrow(address(wood), owner);
 
-        // 3. Deploy Voter (needs VotingEscrow + factory + epoch start + wood + minter)
-        address predictedMinter = vm.computeCreateAddress(owner, vm.getNonce(owner) + 1);
+        // 4. Deploy Voter (needs VotingEscrow + factory + epoch start + wood + minter)
         voter = new Voter(
             address(votingEscrow), address(mockFactory), block.timestamp, address(wood), predictedMinter, owner
         );
 
-        // 4. Deploy Minter (needs all addresses)
+        // 5. Deploy Minter (needs all addresses)
         minter = new Minter(address(wood), address(voter), address(votingEscrow), treasury, owner);
-
-        // 5. Link minter to wood
-        wood.setMinter(address(minter));
 
         // 6. Start voting period
         voter.startVoting();
@@ -103,12 +106,12 @@ contract VaultRewardsDistributorTest is Test {
         vm.warp(block.timestamp + 1);
 
         // Give distributor some WOOD to distribute
-        vm.prank(owner);
-        wood.ownerMint(address(distributor), 10000e18);
+        vm.prank(address(minter));
+        wood.mint(address(distributor), 10000e18);
 
         // Give distributor approval to spend WOOD for testing depositRewards
-        vm.prank(owner);
-        wood.ownerMint(owner, 50000e18);
+        vm.prank(address(minter));
+        wood.mint(owner, 50000e18);
         vm.prank(owner);
         wood.approve(address(distributor), type(uint256).max);
     }

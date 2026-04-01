@@ -2,7 +2,8 @@
 pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
-import {MockWoodToken} from "../src/MockWoodToken.sol";
+import {WoodToken} from "../src/WoodToken.sol";
+import {MockLzEndpoint} from "./mocks/MockLzEndpoint.sol";
 import {VotingEscrow} from "../src/VotingEscrow.sol";
 import {Voter} from "../src/Voter.sol";
 import {Minter} from "../src/Minter.sol";
@@ -10,7 +11,7 @@ import {Minter} from "../src/Minter.sol";
 /// @title VeWoodTest — Basic functionality test for ve(3,3) contracts
 /// @notice Tests that the core ve(3,3) tokenomics contracts work together correctly
 contract VeWoodTest is Test {
-    MockWoodToken public wood;
+    WoodToken public wood;
     VotingEscrow public votingEscrow;
     Voter public voter;
     Minter public minter;
@@ -22,14 +23,17 @@ contract VeWoodTest is Test {
     function setUp() public {
         vm.startPrank(owner);
 
-        // Deploy token and escrow first
-        wood = new MockWoodToken(owner);
+        // Deploy LZ endpoint + predict minter address
+        MockLzEndpoint lzEndpoint = new MockLzEndpoint();
+        address mockSyndicateFactory = address(0x4);
+        uint64 nonce = vm.getNonce(owner);
+        // Predict: WoodToken(+0), VotingEscrow(+1), Voter(+2), Minter(+3)
+        address predictedMinter = vm.computeCreateAddress(owner, nonce + 3);
+
+        // Deploy token with predicted minter
+        wood = new WoodToken(address(lzEndpoint), owner, predictedMinter);
         votingEscrow = new VotingEscrow(address(wood), owner);
 
-        // Create a mock syndicate factory address
-        address mockSyndicateFactory = address(0x4);
-        // Predict minter address for Voter constructor (circular dependency)
-        address predictedMinter = vm.computeCreateAddress(owner, vm.getNonce(owner) + 1);
         voter = new Voter(
             address(votingEscrow),
             mockSyndicateFactory,
@@ -42,16 +46,13 @@ contract VeWoodTest is Test {
         // Deploy minter with real addresses
         minter = new Minter(address(wood), address(voter), address(votingEscrow), treasury, owner);
 
-        // Link minter to wood token
-        wood.setMinter(address(minter));
-
         vm.stopPrank();
     }
 
     function testVotingEscrowBasics() public {
         // Give user some WOOD tokens
-        vm.prank(owner);
-        wood.ownerMint(user, 1000e18);
+        vm.prank(address(minter));
+        wood.mint(user, 1000e18);
 
         // User locks WOOD for voting escrow
         vm.startPrank(user);
@@ -77,8 +78,8 @@ contract VeWoodTest is Test {
 
     function testAutoMaxLock() public {
         // Give user some WOOD tokens
-        vm.prank(owner);
-        wood.ownerMint(user, 1000e18);
+        vm.prank(address(minter));
+        wood.mint(user, 1000e18);
 
         vm.startPrank(user);
         wood.approve(address(votingEscrow), 1000e18);
@@ -102,8 +103,8 @@ contract VeWoodTest is Test {
 
     function testIncreaseAmount() public {
         // Give user some WOOD tokens
-        vm.prank(owner);
-        wood.ownerMint(user, 1000e18);
+        vm.prank(address(minter));
+        wood.mint(user, 1000e18);
 
         vm.startPrank(user);
         wood.approve(address(votingEscrow), 1000e18);
@@ -145,8 +146,8 @@ contract VeWoodTest is Test {
 
     function testGetTokenIds() public {
         // Give user some WOOD tokens
-        vm.prank(owner);
-        wood.ownerMint(user, 1000e18);
+        vm.prank(address(minter));
+        wood.mint(user, 1000e18);
 
         vm.startPrank(user);
         wood.approve(address(votingEscrow), 1000e18);
