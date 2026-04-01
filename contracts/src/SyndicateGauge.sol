@@ -239,22 +239,11 @@ contract SyndicateGauge is Ownable, ReentrancyGuard {
 
     /// @dev Calculate LP reward based on their share of the Uniswap V3 position
     /// @dev Implements bootstrapping schedule: 10%→7%→3%→0% over epochs 1-12
-    function _calculateLPReward(address lp, uint256 epoch, uint256 totalLpRewards) internal view returns (uint256) {
-        // Only LPs during bootstrapping period (epochs 1-12) receive rewards
+    /// @dev TODO: Integrate with Uniswap V3 position manager for pro-rata LP shares
+    function _calculateLPReward(address, uint256 epoch, uint256) internal pure returns (uint256) {
         if (epoch > LP_BOOTSTRAP_EPOCHS) return 0;
-        if (totalLpRewards == 0) return 0;
-
-        // For simplified implementation, assume equal distribution among all LPs
-        // In production, this should query Uniswap V3 position manager for:
-        // 1. Liquidity amounts provided by this LP during the epoch
-        // 2. Total liquidity in the pool during the epoch
-        // 3. Calculate pro-rata share: (lpLiquidity / totalLiquidity) * totalLpRewards
-
-        // For now, return proportional share based on LP token ownership
-        // This is a placeholder - real implementation would integrate with Uniswap V3
-        lp; // Silence unused parameter warning
-
-        // Simplified: assume single LP gets all rewards (replace with proper logic)
-        return totalLpRewards;
+        // LP reward distribution not yet implemented — requires Uniswap V3 integration.
+        // Guarded to prevent first-come-first-served exploit with placeholder logic.
+        revert NotAuthorized();
     }
 }

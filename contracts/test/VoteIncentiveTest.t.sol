@@ -173,7 +173,7 @@ contract VoteIncentiveTest is Test {
         voteIncentive.depositIncentive(syndicateId1, epoch, address(bribeToken1), incentiveAmount);
 
         // Flip to epoch 2
-        vm.warp(voter.getEpochEnd(1) + 1);
+        vm.warp(voter.getEpochEnd(1) + 2);
         voter.flipEpoch();
 
         // Vote in epoch 2
@@ -186,7 +186,7 @@ contract VoteIncentiveTest is Test {
         voter.vote(tokenId1, syndicateIds, weights);
 
         // Flip to epoch 3 so epoch 2 votes can be claimed
-        vm.warp(voter.getEpochEnd(2) + 1);
+        vm.warp(voter.getEpochEnd(2) + 2);
         voter.flipEpoch();
 
         uint256 user1BalanceBefore = bribeToken1.balanceOf(user1);
@@ -215,7 +215,7 @@ contract VoteIncentiveTest is Test {
         voteIncentive.depositIncentive(syndicateId1, epoch, address(bribeToken1), incentiveAmount);
 
         // Flip to epoch 2
-        vm.warp(voter.getEpochEnd(1) + 1);
+        vm.warp(voter.getEpochEnd(1) + 2);
         voter.flipEpoch();
 
         // Both users vote in epoch 2
@@ -231,7 +231,7 @@ contract VoteIncentiveTest is Test {
         voter.vote(tokenId2, syndicateIds, weights);
 
         // Flip to epoch 3
-        vm.warp(voter.getEpochEnd(2) + 1);
+        vm.warp(voter.getEpochEnd(2) + 2);
         voter.flipEpoch();
 
         address[] memory tokens = new address[](1);
@@ -262,7 +262,7 @@ contract VoteIncentiveTest is Test {
         assertGt(totalVotes, 0);
     }
 
-    function testCanClaimDuringEpochIfVoted() public {
+    function testCanClaimAfterEpochEnds() public {
         uint256 incentiveAmount = 1000e18;
 
         // Deposit in epoch 1 for epoch 2
@@ -270,7 +270,7 @@ contract VoteIncentiveTest is Test {
         voteIncentive.depositIncentive(syndicateId1, 2, address(bribeToken1), incentiveAmount);
 
         // Flip to epoch 2
-        vm.warp(voter.getEpochEnd(1) + 1);
+        vm.warp(voter.getEpochEnd(1) + 2);
         voter.flipEpoch();
 
         // Vote in epoch 2
@@ -282,7 +282,10 @@ contract VoteIncentiveTest is Test {
         vm.prank(user1);
         voter.vote(tokenId1, syndicateIds, weights);
 
-        // Claim during epoch 2 — contract allows this once votes are recorded
+        // Flip to epoch 3 so epoch 2 claims are allowed
+        vm.warp(voter.getEpochEnd(2) + 2);
+        voter.flipEpoch();
+
         address[] memory tokens = new address[](1);
         tokens[0] = address(bribeToken1);
 
@@ -303,7 +306,7 @@ contract VoteIncentiveTest is Test {
         voteIncentive.depositIncentive(syndicateId1, epoch, address(bribeToken2), amount2);
 
         // Flip to epoch 2, vote
-        vm.warp(voter.getEpochEnd(1) + 1);
+        vm.warp(voter.getEpochEnd(1) + 2);
         voter.flipEpoch();
 
         uint256[] memory syndicateIds = new uint256[](1);
@@ -314,7 +317,7 @@ contract VoteIncentiveTest is Test {
         voter.vote(tokenId1, syndicateIds, weights);
 
         // Flip to epoch 3
-        vm.warp(voter.getEpochEnd(2) + 1);
+        vm.warp(voter.getEpochEnd(2) + 2);
         voter.flipEpoch();
 
         address[] memory tokens = new address[](2);
@@ -344,7 +347,7 @@ contract VoteIncentiveTest is Test {
         voteIncentive.depositIncentive(syndicateId2, epoch, address(bribeToken1), incentiveAmount);
 
         // Flip to epoch 2
-        vm.warp(voter.getEpochEnd(1) + 1);
+        vm.warp(voter.getEpochEnd(1) + 2);
         voter.flipEpoch();
 
         // Vote 60/40 split in epoch 2
@@ -359,7 +362,7 @@ contract VoteIncentiveTest is Test {
         voter.vote(tokenId1, syndicateIds, weights);
 
         // Flip to epoch 3
-        vm.warp(voter.getEpochEnd(2) + 1);
+        vm.warp(voter.getEpochEnd(2) + 2);
         voter.flipEpoch();
 
         address[] memory tokens = new address[](1);
@@ -390,7 +393,7 @@ contract VoteIncentiveTest is Test {
         voteIncentive.depositIncentive(syndicateId1, epoch, address(bribeToken1), incentiveAmount);
 
         // Flip to epoch 2, vote
-        vm.warp(voter.getEpochEnd(1) + 1);
+        vm.warp(voter.getEpochEnd(1) + 2);
         voter.flipEpoch();
 
         uint256[] memory syndicateIds = new uint256[](1);
@@ -401,7 +404,7 @@ contract VoteIncentiveTest is Test {
         voter.vote(tokenId1, syndicateIds, weights);
 
         // Flip to epoch 3
-        vm.warp(voter.getEpochEnd(2) + 1);
+        vm.warp(voter.getEpochEnd(2) + 2);
         voter.flipEpoch();
 
         // After epoch 2 ends, should show full amount
@@ -430,7 +433,7 @@ contract VoteIncentiveTest is Test {
         voteIncentive.depositIncentive(syndicateId2, 2, address(bribeToken1), incentiveAmount);
 
         // Flip to epoch 2
-        vm.warp(voter.getEpochEnd(1) + 1);
+        vm.warp(voter.getEpochEnd(1) + 2);
         voter.flipEpoch();
 
         // Vote in epoch 2
@@ -445,7 +448,7 @@ contract VoteIncentiveTest is Test {
         voter.vote(tokenId1, syndicateIds, weights);
 
         // Flip to epoch 3
-        vm.warp(voter.getEpochEnd(2) + 1);
+        vm.warp(voter.getEpochEnd(2) + 2);
         voter.flipEpoch();
 
         // Claim all at once

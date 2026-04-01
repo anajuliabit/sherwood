@@ -101,6 +101,7 @@ contract VoteIncentive is Ownable, ReentrancyGuard {
     error InvalidEpoch();
     error TransferFailed();
     error NotAuthorized();
+    error EpochNotEnded();
 
     // ==================== CONSTRUCTOR ====================
 
@@ -258,6 +259,9 @@ contract VoteIncentive is Ownable, ReentrancyGuard {
         internal
         returns (uint256 amount)
     {
+        // Prevent vote-claim-reset exploit: epoch must be over before claims
+        if (block.timestamp <= voter.getEpochEnd(epoch)) return 0;
+
         ClaimInfo storage claimInfo = _claimInfo[tokenId][syndicateId][epoch][token];
         if (claimInfo.claimed) return 0; // Already claimed
 

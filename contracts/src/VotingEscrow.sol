@@ -82,6 +82,9 @@ contract VotingEscrow is ERC721, Ownable, ReentrancyGuard {
     /// @dev tokenId => LockAmountCheckpoint[]
     mapping(uint256 => LockAmountCheckpoint[]) private _lockAmountHistory;
 
+    /// @notice Global total locked amount history for historical queries
+    LockAmountCheckpoint[] private _totalLockedHistory;
+
     // ==================== EVENTS ====================
 
     event Deposit(
@@ -140,6 +143,7 @@ contract VotingEscrow is ERC721, Ownable, ReentrancyGuard {
 
         // Validate lock duration
         if (!autoMaxLock) {
+            if (unlockTime <= block.timestamp) revert InsufficientLockDuration();
             uint256 duration = unlockTime - block.timestamp;
             if (duration < MIN_LOCK_DURATION || duration > MAX_LOCK_DURATION) {
                 revert InsufficientLockDuration();
@@ -161,6 +165,7 @@ contract VotingEscrow is ERC721, Ownable, ReentrancyGuard {
         _activeTokenIds.add(tokenId);
         _totalLockedAmount += value;
         _lockAmountHistory[tokenId].push(LockAmountCheckpoint({timestamp: block.timestamp, amount: value}));
+        _totalLockedHistory.push(LockAmountCheckpoint({timestamp: block.timestamp, amount: _totalLockedAmount}));
 
         // Add to user's token list
         _addTokenToUser(msg.sender, tokenId);
@@ -187,6 +192,7 @@ contract VotingEscrow is ERC721, Ownable, ReentrancyGuard {
         lock.amount += value;
         _totalLockedAmount += value;
         _lockAmountHistory[tokenId].push(LockAmountCheckpoint({timestamp: block.timestamp, amount: lock.amount}));
+        _totalLockedHistory.push(LockAmountCheckpoint({timestamp: block.timestamp, amount: _totalLockedAmount}));
 
         // Transfer WOOD tokens
         wood.safeTransferFrom(msg.sender, address(this), value);
@@ -241,6 +247,7 @@ contract VotingEscrow is ERC721, Ownable, ReentrancyGuard {
         _activeTokenIds.remove(tokenId);
         _totalLockedAmount -= amount;
         _lockAmountHistory[tokenId].push(LockAmountCheckpoint({timestamp: block.timestamp, amount: 0}));
+        _totalLockedHistory.push(LockAmountCheckpoint({timestamp: block.timestamp, amount: _totalLockedAmount}));
 
         // Clear lock data
         delete _locks[tokenId];
@@ -310,34 +317,14 @@ contract VotingEscrow is ERC721, Ownable, ReentrancyGuard {
         return _totalLockedAmount;
     }
 
+    /// @notice Get the total locked amount at a specific timestamp (binary search)
+    function totalLockedAmountAt(uint256 timestamp) external view returns (uint256) {
+        return _checkpointBinarySearch(_totalLockedHistory, timestamp);
+    }
+
     /// @notice Get the lock amount for a veNFT at a specific timestamp (binary search)
     function getLockAmountAt(uint256 tokenId, uint256 timestamp) external view returns (uint256) {
-        LockAmountCheckpoint[] storage checkpoints = _lockAmountHistory[tokenId];
-        uint256 len = checkpoints.length;
-        if (len == 0) return 0;
-
-        // If timestamp is at or after the latest checkpoint, return latest
-        if (timestamp >= checkpoints[len - 1].timestamp) {
-            return checkpoints[len - 1].amount;
-        }
-
-        // If timestamp is before the first checkpoint, return 0
-        if (timestamp < checkpoints[0].timestamp) {
-            return 0;
-        }
-
-        // Binary search for the checkpoint at or before timestamp
-        uint256 low = 0;
-        uint256 high = len - 1;
-        while (low < high) {
-            uint256 mid = (low + high + 1) / 2;
-            if (checkpoints[mid].timestamp <= timestamp) {
-                low = mid;
-            } else {
-                high = mid - 1;
-            }
-        }
-        return checkpoints[low].amount;
+        return _checkpointBinarySearch(_lockAmountHistory[tokenId], timestamp);
     }
 
     // ==================== INTERNAL FUNCTIONS ====================
@@ -459,5 +446,29 @@ contract VotingEscrow is ERC721, Ownable, ReentrancyGuard {
     /// @dev Check if token exists (OZ v5 internal — no external self-call)
     function _exists(uint256 tokenId) internal view returns (bool) {
         return _ownerOf(tokenId) != address(0);
+    }
+
+    /// @dev Binary search for the checkpoint amount at or before a given timestamp
+    function _checkpointBinarySearch(LockAmountCheckpoint[] storage checkpoints, uint256 timestamp)
+        internal
+        view
+        returns (uint256)
+    {
+        uint256 len = checkpoints.length;
+        if (len == 0) return 0;
+        if (timestamp >= checkpoints[len - 1].timestamp) return checkpoints[len - 1].amount;
+        if (timestamp < checkpoints[0].timestamp) return 0;
+
+        uint256 low = 0;
+        uint256 high = len - 1;
+        while (low < high) {
+            uint256 mid = (low + high + 1) / 2;
+            if (checkpoints[mid].timestamp <= timestamp) {
+                low = mid;
+            } else {
+                high = mid - 1;
+            }
+        }
+        return checkpoints[low].amount;
     }
 }

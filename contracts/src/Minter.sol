@@ -16,6 +16,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 /// @notice Handles 3-phase emission schedule, epoch flipping, rebase calculations,
 ///         and WOOD Fed voting for emission rate adjustments.
 contract Minter is Ownable, Pausable, ReentrancyGuard {
+    using SafeERC20 for IWoodToken;
     // ==================== ENUMS ====================
 
     /// @notice Emission phases
@@ -178,13 +179,16 @@ contract Minter is Ownable, Pausable, ReentrancyGuard {
         if (block.timestamp < voter.getEpochEnd(currentEpoch - 1)) revert EpochNotReady();
         if (_emissionStates[currentEpoch].processed) revert EpochAlreadyProcessed();
 
-        // Calculate emission for this epoch
+        // Calculate emission for this epoch (using current rate, before phase update)
         uint256 totalEmission = calculateEpochEmission();
         uint256 teamAllocation = (totalEmission * TEAM_ALLOCATION_BPS) / BASIS_POINTS;
         uint256 gaugeAllocation = totalEmission - teamAllocation;
         uint256 rebaseAmount = calculateRebase();
 
-        // Update emission rate based on phase
+        // Record the rate actually used for this epoch's emission (before phase update)
+        _emissionHistory.push(_currentEmissionRate);
+
+        // Update emission rate based on phase (takes effect next epoch)
         _updateEmissionRate(currentEpoch);
 
         // Store emission state
@@ -210,13 +214,12 @@ contract Minter is Ownable, Pausable, ReentrancyGuard {
             // Distribute rebase via RewardsDistributor
             if (rebaseAmount > 0 && rewardsDistributor != address(0)) {
                 wood.mint(address(this), rebaseAmount);
-                wood.approve(rewardsDistributor, rebaseAmount);
+                wood.forceApprove(rewardsDistributor, rebaseAmount);
                 IRewardsDistributor(rewardsDistributor).distributeRebase(currentEpoch, rebaseAmount);
             }
         }
 
         _lastProcessedEpoch = currentEpoch;
-        _emissionHistory.push(_currentEmissionRate);
 
         emit EpochProcessed(
             currentEpoch, totalEmission, teamAllocation, gaugeAllocation, rebaseAmount, getCurrentPhase()
@@ -258,7 +261,7 @@ contract Minter is Ownable, Pausable, ReentrancyGuard {
         if (msg.sender != owner()) revert NotAuthorized();
 
         _circuitBreakerActive = true;
-        _emissionReductionPercent = 50; // 50% reduction
+        _emissionReductionPercent = 5000; // 50% reduction in basis points
 
         emit CircuitBreakerTriggered(voter.currentEpoch(), _emissionReductionPercent, "Manual trigger");
     }
@@ -462,7 +465,7 @@ contract Minter is Ownable, Pausable, ReentrancyGuard {
 
         if (totalWeight == 0) {
             // No votes — send gauge allocation to treasury as fallback
-            wood.transfer(teamTreasury, gaugeAllocation);
+            wood.safeTransfer(teamTreasury, gaugeAllocation);
             return;
         }
 
@@ -478,7 +481,7 @@ contract Minter is Ownable, Pausable, ReentrancyGuard {
             if (gaugeShare == 0) continue;
 
             // Approve and send to gauge
-            wood.approve(gaugeInfo.gauge, gaugeShare);
+            wood.forceApprove(gaugeInfo.gauge, gaugeShare);
             ISyndicateGauge(gaugeInfo.gauge).receiveEmission(epoch, gaugeShare);
             distributed += gaugeShare;
         }
@@ -486,7 +489,7 @@ contract Minter is Ownable, Pausable, ReentrancyGuard {
         // Send any dust to treasury
         uint256 dust = gaugeAllocation - distributed;
         if (dust > 0) {
-            wood.transfer(teamTreasury, dust);
+            wood.safeTransfer(teamTreasury, dust);
         }
     }
 }

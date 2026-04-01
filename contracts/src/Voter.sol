@@ -96,6 +96,10 @@ contract Voter is Ownable, ReentrancyGuard {
     /// @notice Track which epochs had quorum met
     mapping(uint256 => bool) private _quorumMet;
 
+    /// @notice Snapshot of active syndicate IDs at each epoch (for quorum fallback consistency)
+    /// @dev epoch => syndicateId[]
+    mapping(uint256 => uint256[]) private _epochSyndicateSnapshot;
+
     /// @notice Last epoch where quorum was met (for fallback)
     uint256 private _lastQuorumEpoch;
 
@@ -145,7 +149,10 @@ contract Voter is Ownable, ReentrancyGuard {
         address _minter,
         address _owner
     ) Ownable(_owner) {
-        if (_votingEscrow == address(0) || _syndicateFactory == address(0)) revert NotAuthorized();
+        if (
+            _votingEscrow == address(0) || _syndicateFactory == address(0) || _wood == address(0)
+                || _minter == address(0)
+        ) revert NotAuthorized();
 
         votingEscrow = IVotingEscrow(_votingEscrow);
         syndicateFactory = ISyndicateFactory(_syndicateFactory);
@@ -210,8 +217,11 @@ contract Voter is Ownable, ReentrancyGuard {
     function flipEpoch() external {
         require(block.timestamp >= getEpochEnd(_currentEpoch), "Epoch not finished");
 
+        // Snapshot active syndicates for this epoch (used by quorum fallback)
+        _epochSyndicateSnapshot[_currentEpoch] = _activeSyndicates.values();
+
         // Check if current epoch had quorum before flipping
-        bool hadQuorum = this.isQuorumMet(_currentEpoch);
+        bool hadQuorum = _isQuorumMet(_currentEpoch);
         _quorumMet[_currentEpoch] = hadQuorum;
         if (hadQuorum) {
             _lastQuorumEpoch = _currentEpoch;
@@ -278,10 +288,7 @@ contract Voter is Ownable, ReentrancyGuard {
         uint256 currentTime = block.timestamp;
         uint256 epochStart = getEpochStart(_currentEpoch);
         uint256 epochEnd = getEpochEnd(_currentEpoch);
-        // Add buffer period after epoch start before votes count (prevent timing manipulation)
-        // Skip buffer in test environments (EPOCH_DURATION * currentEpoch <= 100 days)
-        bool isTestEnvironment = (EPOCH_DURATION * _currentEpoch <= 100 days);
-        uint256 votingStart = isTestEnvironment ? epochStart : epochStart + VOTE_BUFFER_PERIOD;
+        uint256 votingStart = epochStart + VOTE_BUFFER_PERIOD;
         return currentTime >= votingStart && currentTime <= epochEnd;
     }
 
@@ -306,7 +313,10 @@ contract Voter is Ownable, ReentrancyGuard {
 
     function isQuorumMet(uint256 epoch) external view returns (bool) {
         if (epoch == 0) epoch = _currentEpoch;
+        return _isQuorumMet(epoch);
+    }
 
+    function _isQuorumMet(uint256 epoch) internal view returns (bool) {
         uint256 totalSupply = votingEscrow.totalSupplyAt(getEpochStart(epoch));
         if (totalSupply == 0) return false;
 
@@ -334,7 +344,10 @@ contract Voter is Ownable, ReentrancyGuard {
             epoch = _lastQuorumEpoch;
         }
 
-        uint256[] memory activeSyndicateIds = _activeSyndicates.values();
+        // Use snapshotted syndicates from the epoch (not current set) for consistency
+        uint256[] memory activeSyndicateIds =
+            _epochSyndicateSnapshot[epoch].length > 0 ? _epochSyndicateSnapshot[epoch] : _activeSyndicates.values(); // fallback for current/unfinished epoch
+
         uint256 totalVotesInEpoch = _totalVotes[epoch];
 
         if (totalVotesInEpoch == 0) {
@@ -357,48 +370,44 @@ contract Voter is Ownable, ReentrancyGuard {
             return (syndicateIds, allocations);
         }
 
-        // Apply 25% cap and redistribute excess
+        // Apply 25% cap and redistribute excess (multi-pass until convergence)
         uint256 maxVotes = (totalRawVotes * MAX_SYNDICATE_SHARE) / BASIS_POINTS;
-        uint256 totalCappedVotes = 0;
-        uint256 totalExcess = 0;
+        uint256 minVotesForRedistribution = (totalRawVotes * MIN_REDISTRIBUTION_THRESHOLD) / BASIS_POINTS;
         bool[] memory isCapped = new bool[](activeSyndicateIds.length);
 
-        // First pass: apply caps
+        // Initialize allocations from raw votes
         for (uint256 i = 0; i < activeSyndicateIds.length; i++) {
-            if (rawVotes[i] > maxVotes) {
-                allocations[i] = maxVotes;
-                totalExcess += rawVotes[i] - maxVotes;
-                isCapped[i] = true;
-            } else {
-                allocations[i] = rawVotes[i];
-            }
-            totalCappedVotes += allocations[i];
+            allocations[i] = rawVotes[i];
         }
 
-        // Second pass: redistribute excess proportionally to uncapped gauges
-        // Only syndicates with minimum organic votes can receive redistribution
-        if (totalExcess > 0) {
-            uint256 minVotesForRedistribution = (totalRawVotes * MIN_REDISTRIBUTION_THRESHOLD) / BASIS_POINTS;
-            uint256 uncappedVotes = 0;
+        // Multi-pass cap + redistribute (max 10 iterations to prevent infinite loop)
+        for (uint256 pass = 0; pass < 10; pass++) {
+            uint256 totalExcess = 0;
 
-            // Calculate eligible uncapped votes (must meet minimum threshold)
-            for (uint256 i = 0; i < activeSyndicateIds.length; i++) {
-                if (!isCapped[i] && rawVotes[i] >= minVotesForRedistribution) {
-                    uncappedVotes += rawVotes[i];
+            // Cap pass
+            for (uint256 i = 0; i < allocations.length; i++) {
+                if (allocations[i] > maxVotes && !isCapped[i]) {
+                    totalExcess += allocations[i] - maxVotes;
+                    allocations[i] = maxVotes;
+                    isCapped[i] = true;
                 }
             }
 
-            if (uncappedVotes > 0) {
-                for (uint256 i = 0; i < activeSyndicateIds.length; i++) {
-                    if (!isCapped[i] && rawVotes[i] >= minVotesForRedistribution) {
-                        uint256 redistribution = (totalExcess * rawVotes[i]) / uncappedVotes;
-                        allocations[i] += redistribution;
+            if (totalExcess == 0) break; // Converged
 
-                        // Apply cap again if needed
-                        if (allocations[i] > maxVotes) {
-                            allocations[i] = maxVotes;
-                        }
-                    }
+            // Redistribute excess proportionally to eligible uncapped gauges
+            uint256 uncappedVotes = 0;
+            for (uint256 i = 0; i < allocations.length; i++) {
+                if (!isCapped[i] && rawVotes[i] >= minVotesForRedistribution) {
+                    uncappedVotes += allocations[i];
+                }
+            }
+
+            if (uncappedVotes == 0) break; // No eligible recipients
+
+            for (uint256 i = 0; i < allocations.length; i++) {
+                if (!isCapped[i] && rawVotes[i] >= minVotesForRedistribution) {
+                    allocations[i] += (totalExcess * allocations[i]) / uncappedVotes;
                 }
             }
         }

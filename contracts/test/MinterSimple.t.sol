@@ -52,7 +52,7 @@ contract MinterSimpleTest is Test {
         uint256 totalSupplyBefore = wood.totalSupply();
 
         // Move to end of epoch 1
-        vm.warp(voter.getEpochEnd(1) + 1);
+        vm.warp(voter.getEpochEnd(1) + 2);
         minter.flipEpoch();
 
         // Should have minted new tokens
@@ -65,7 +65,7 @@ contract MinterSimpleTest is Test {
     function testTeamAllocation() public {
         uint256 treasuryBalanceBefore = wood.balanceOf(treasury);
 
-        vm.warp(voter.getEpochEnd(1) + 1);
+        vm.warp(voter.getEpochEnd(1) + 2);
         minter.flipEpoch();
 
         uint256 treasuryBalanceAfter = wood.balanceOf(treasury);
@@ -78,7 +78,7 @@ contract MinterSimpleTest is Test {
     }
 
     function testCannotFlipSameEpochTwice() public {
-        vm.warp(voter.getEpochEnd(1) + 1);
+        vm.warp(voter.getEpochEnd(1) + 2);
         minter.flipEpoch();
 
         vm.expectRevert();
@@ -91,7 +91,7 @@ contract MinterSimpleTest is Test {
 
         assertTrue(minter.isEmissionsPaused());
 
-        vm.warp(voter.getEpochEnd(1) + 1);
+        vm.warp(voter.getEpochEnd(1) + 2);
         vm.expectRevert();
         minter.flipEpoch();
 

@@ -25,6 +25,7 @@ contract WoodToken is OFT {
         OFT("Wood Token", "WOOD", _lzEndpoint, _delegate)
         Ownable(_delegate)
     {
+        if (_minter == address(0)) revert OnlyMinter();
         minter = _minter;
     }
 

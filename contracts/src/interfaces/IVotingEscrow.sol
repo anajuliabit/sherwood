@@ -13,6 +13,7 @@ interface IVotingEscrow is IERC721 {
     struct LockInfo {
         uint256 amount; // Amount of WOOD locked
         uint256 end; // Lock end timestamp
+        uint256 createdBlock; // Block when lock was created (for flash loan protection)
         bool autoMaxLock; // If true, treated as 1-year lock with no decay
     }
 
@@ -109,6 +110,11 @@ interface IVotingEscrow is IERC721 {
     /// @notice Get the total amount of WOOD locked across all veNFTs
     /// @return Total locked WOOD amount (not voting power)
     function totalLockedAmount() external view returns (uint256);
+
+    /// @notice Get the total locked amount at a specific historical timestamp
+    /// @param timestamp The timestamp to query at
+    /// @return Total locked WOOD at that timestamp
+    function totalLockedAmountAt(uint256 timestamp) external view returns (uint256);
 
     /// @notice Get the lock amount for a veNFT at a specific timestamp
     /// @param tokenId The veNFT to query

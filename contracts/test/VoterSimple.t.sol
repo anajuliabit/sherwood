@@ -26,7 +26,7 @@ contract VoterSimpleTest is Test {
         wood = new WoodToken(address(lzEndpoint), owner, owner);
         votingEscrow = new VotingEscrow(address(wood), owner);
         voter =
-            new Voter(address(votingEscrow), mockSyndicateFactory, block.timestamp, address(wood), address(0), owner);
+            new Voter(address(votingEscrow), mockSyndicateFactory, block.timestamp, address(wood), address(1), owner);
 
         wood.mint(user1, 10000e18);
 
@@ -43,6 +43,7 @@ contract VoterSimpleTest is Test {
     }
 
     function testBasicVoting() public {
+        vm.warp(block.timestamp + 2); // Past vote buffer period
         assertTrue(voter.isVotingActive());
 
         vm.prank(user1);
@@ -61,7 +62,7 @@ contract VoterSimpleTest is Test {
         assertEq(voter.currentEpoch(), 1);
 
         uint256 epochEnd = voter.getEpochEnd(1);
-        vm.warp(epochEnd + 1);
+        vm.warp(epochEnd + 2);
         voter.flipEpoch();
 
         assertEq(voter.currentEpoch(), 2);
@@ -96,6 +97,7 @@ contract VoterSimpleTest is Test {
     }
 
     function testResetVotes() public {
+        vm.warp(block.timestamp + 2); // Past vote buffer period
         // Vote first
         vm.prank(user1);
         uint256[] memory syndicateIds = new uint256[](1);

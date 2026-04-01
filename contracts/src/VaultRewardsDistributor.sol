@@ -120,6 +120,7 @@ contract VaultRewardsDistributor is Ownable, ReentrancyGuard {
 
         uint256 epochStart = voter.getEpochStart(epoch);
         if (epochStart == 0) revert InvalidEpoch();
+        if (block.timestamp <= epochStart) revert InvalidEpoch(); // Cannot deposit for future/current epoch
 
         pool.totalRewards = amount;
         pool.epochStart = epochStart;

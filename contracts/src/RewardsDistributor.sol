@@ -61,6 +61,9 @@ contract RewardsDistributor is Ownable, ReentrancyGuard {
     /// @notice Total rebase claimed across all epochs
     uint256 private _totalRebaseClaimed;
 
+    /// @notice Highest epoch for which rebase has been distributed
+    uint256 private _latestDistributedEpoch;
+
     // ==================== EVENTS ====================
 
     event RebaseDistributed(uint256 indexed epoch, uint256 totalRebase, uint256 totalLocked);
@@ -109,10 +112,9 @@ contract RewardsDistributor is Ownable, ReentrancyGuard {
         RebaseDistribution storage distribution = _rebaseDistributions[epoch];
         if (distribution.processed) revert DistributionNotReady(); // Already processed
 
-        // Calculate total locked amount at distribution time
-        // Note: This is a simplified approach. In production, you'd want to use
-        // the total locked amount at the epoch boundary for consistency
-        uint256 totalLocked = _calculateTotalLocked();
+        // Use totalLockedAmountAt for consistency with per-token getLockAmountAt queries
+        // Both use the same checkpoint system, ensuring sum of individual claims <= totalLocked
+        uint256 totalLocked = _calculateTotalLockedAt(block.timestamp);
 
         distribution.totalRebase = rebaseAmount;
         distribution.totalLocked = totalLocked;
@@ -120,6 +122,7 @@ contract RewardsDistributor is Ownable, ReentrancyGuard {
         distribution.processed = true;
 
         _totalRebaseDistributed += rebaseAmount;
+        if (epoch > _latestDistributedEpoch) _latestDistributedEpoch = epoch;
 
         // Transfer WOOD from Minter
         wood.safeTransferFrom(msg.sender, address(this), rebaseAmount);
@@ -264,9 +267,9 @@ contract RewardsDistributor is Ownable, ReentrancyGuard {
         return (distribution.totalRebase * lockedAmount) / distribution.totalLocked;
     }
 
-    /// @dev Calculate total locked WOOD across all veNFTs (actual locked amount, not voting power)
-    function _calculateTotalLocked() internal view returns (uint256 totalLocked) {
-        totalLocked = votingEscrow.totalLockedAmount();
+    /// @dev Get total locked WOOD at a specific timestamp (consistent with per-token snapshots)
+    function _calculateTotalLockedAt(uint256 timestamp) internal view returns (uint256 totalLocked) {
+        totalLocked = votingEscrow.totalLockedAmountAt(timestamp);
         if (totalLocked == 0) totalLocked = 1; // Avoid division by zero
     }
 
@@ -276,10 +279,8 @@ contract RewardsDistributor is Ownable, ReentrancyGuard {
         view
         returns (uint256[] memory epochs)
     {
-        // This is a simplified implementation
-        // In production, you'd want to limit the search range and use more efficient data structures
-
-        uint256 maxEpoch = 100; // Arbitrary limit for demonstration
+        uint256 maxEpoch = _latestDistributedEpoch;
+        if (maxEpoch == 0) return new uint256[](0);
         uint256[] memory tempEpochs = new uint256[](maxEpoch);
         uint256 count = 0;
 
