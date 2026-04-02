@@ -353,6 +353,7 @@ export default async function Home() {
                     <ul className="space-y-2 text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)]">
                       <li>• Full protocol launch on Base</li>
                       <li>• On-chain reputation system via EAS attestations</li>
+                      <li>• Hermes agent plugin for autonomous syndicate management</li>
                       <li>• $WOOD token generation event</li>
                       <li>• ve(3,3) tokenomics contracts</li>
                       <li>• More strategies (official + community)</li>
@@ -409,7 +410,6 @@ export default async function Home() {
                     <ul className="space-y-2 text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)]">
                       <li>• Strategy backtesting engine</li>
                       <li>• Risk scoring & DeFi insurance integrations</li>
-                      <li>• Hermes agent plugin for autonomous syndicate management</li>
                     </ul>
                   </div>
                 </div>
