@@ -352,6 +352,7 @@ export default async function Home() {
                     </div>
                     <ul className="space-y-2 text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)]">
                       <li>• Full protocol launch on Base</li>
+                      <li>• On-chain reputation system via EAS attestations</li>
                       <li>• $WOOD token generation event</li>
                       <li>• ve(3,3) tokenomics contracts</li>
                       <li>• More strategies (official + community)</li>
@@ -407,7 +408,6 @@ export default async function Home() {
                     <h3 className="text-xl font-medium mb-4">Phase 4 — Intelligence</h3>
                     <ul className="space-y-2 text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)]">
                       <li>• Strategy backtesting engine</li>
-                      <li>• On-chain reputation system via EAS attestations</li>
                       <li>• Risk scoring & DeFi insurance integrations</li>
                       <li>• Hermes agent plugin for autonomous syndicate management</li>
                     </ul>
