@@ -1,4 +1,4 @@
-import { formatBps, formatShares } from "@/lib/contracts";
+import { formatBps } from "@/lib/contracts";
 
 interface VaultOverviewProps {
   openDeposits: boolean;

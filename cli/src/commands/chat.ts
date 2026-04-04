@@ -23,7 +23,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import ora from "ora";
-import { getAccount } from "../lib/client.js";
+import { getAccount, formatContractError } from "../lib/client.js";
 import { resolveSyndicate, setTextRecord, getTextRecord } from "../lib/ens.js";
 import { cacheGroupId, getCachedGroupId } from "../lib/config.js";
 import type { ChatEnvelope, MessageType } from "../lib/types.js";
@@ -136,7 +136,7 @@ async function handleStream(name: string): Promise<void> {
     await new Promise(() => {});
   } catch (err) {
     spinner.fail("Failed to connect to chat");
-    console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+    console.error(chalk.red(formatContractError(err)));
     process.exit(1);
   }
 }
@@ -162,7 +162,7 @@ async function handleSend(name: string, message: string, markdown: boolean): Pro
     spinner.succeed("Message sent");
   } catch (err) {
     spinner.fail("Failed to send message");
-    console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+    console.error(chalk.red(formatContractError(err)));
     process.exit(1);
   }
 }
@@ -176,7 +176,7 @@ async function handleReact(name: string, messageId: string, emoji: string): Prom
     spinner.succeed(`Reacted ${emoji}`);
   } catch (err) {
     spinner.fail("Failed to send reaction");
-    console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+    console.error(chalk.red(formatContractError(err)));
     process.exit(1);
   }
 }
@@ -203,7 +203,7 @@ async function handleLog(name: string, limit: number): Promise<void> {
     console.log();
   } catch (err) {
     spinner.fail("Failed to load messages");
-    console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+    console.error(chalk.red(formatContractError(err)));
     process.exit(1);
   }
 }
@@ -233,7 +233,7 @@ async function handleMembers(name: string): Promise<void> {
     console.log();
   } catch (err) {
     spinner.fail("Failed to load members");
-    console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+    console.error(chalk.red(formatContractError(err)));
     process.exit(1);
   }
 }
@@ -255,7 +255,7 @@ async function handleAdd(name: string, address: string): Promise<void> {
     spinner.succeed(`Member added: ${address}`);
   } catch (err) {
     spinner.fail("Failed to add member");
-    console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+    console.error(chalk.red(formatContractError(err)));
     process.exit(1);
   }
 }
@@ -269,8 +269,37 @@ async function handleRemove(name: string, address: string): Promise<void> {
     spinner.succeed(`Member removed: ${address}`);
   } catch (err) {
     spinner.fail("Failed to remove member");
-    console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+    console.error(chalk.red(formatContractError(err)));
     process.exit(1);
+  }
+}
+
+/**
+ * Notify the spectator service to sync new groups.
+ * Called after adding the spectator wallet to an XMTP group so the service
+ * invalidates its cache, calls syncAll(), and discovers the new group.
+ */
+async function notifySpectatorSync(): Promise<void> {
+  const spectatorUrl =
+    process.env.SPECTATOR_URL || "https://spectator.sherwood.sh";
+  try {
+    const res = await fetch(`${spectatorUrl}/sync`, {
+      method: "POST",
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (res.ok) {
+      const data = (await res.json()) as { groups?: number };
+      console.log(
+        chalk.dim(
+          `  Spectator synced — ${data.groups ?? "?"} groups discovered`,
+        ),
+      );
+    }
+  } catch {
+    // Non-fatal — spectator will self-sync within 60 s via cache TTL
+    console.log(
+      chalk.dim("  (Spectator sync skipped — will auto-discover within 60 s)"),
+    );
   }
 }
 
@@ -289,13 +318,14 @@ async function handlePublic(name: string, on: boolean): Promise<void> {
     if (on) {
       await xmtp.addMember(group, spectatorAddress);
       spinner.succeed("Public chat enabled — dashboard spectator added");
+      await notifySpectatorSync();
     } else {
       await xmtp.removeMember(group, spectatorAddress);
       spinner.succeed("Public chat disabled — dashboard spectator removed");
     }
   } catch (err) {
     spinner.fail("Failed to toggle public chat");
-    console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+    console.error(chalk.red(formatContractError(err)));
     process.exit(1);
   }
 }
@@ -339,9 +369,14 @@ async function handleInit(name: string, force: boolean, isPublic: boolean): Prom
     spinner.succeed(`Chat group created for ${name}.sherwoodagent.eth`);
     console.log(chalk.dim(`  Group ID: ${groupId}`));
     console.log(chalk.dim(`  Stream:   sherwood chat ${name}`));
+
+    // Notify spectator to sync and discover the new public group
+    if (isPublic) {
+      await notifySpectatorSync();
+    }
   } catch (err) {
     spinner.fail("Failed to initialize chat group");
-    console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+    console.error(chalk.red(formatContractError(err)));
     process.exit(1);
   }
 }

@@ -15,7 +15,7 @@ import ora from "ora";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { getPublicClient, getAccount, writeContractWithRetry } from "../lib/client.js";
+import { getPublicClient, getAccount, writeContractWithRetry, waitForReceipt, formatContractError } from "../lib/client.js";
 import { getChain, getExplorerUrl } from "../lib/network.js";
 import { TOKENS, MOONWELL, VENICE, AERODROME, STRATEGY_TEMPLATES } from "../lib/addresses.js";
 import { BASE_STRATEGY_ABI } from "../lib/abis.js";
@@ -27,6 +27,7 @@ import * as moonwellBuilder from "../strategies/moonwell-supply-template.js";
 import * as veniceBuilder from "../strategies/venice-inference-template.js";
 import * as aerodromeBuilder from "../strategies/aerodrome-lp-template.js";
 import * as wstethBuilder from "../strategies/wsteth-moonwell-template.js";
+import * as mamoBuilder from "../strategies/mamo-yield-template.js";
 
 const ZERO: Address = "0x0000000000000000000000000000000000000000";
 
@@ -63,6 +64,12 @@ const TEMPLATES: TemplateDef[] = [
     key: "wsteth-moonwell",
     description: "WETH → wstETH → Moonwell — stack Lido + lending yield",
     addressKey: "WSTETH_MOONWELL",
+  },
+  {
+    name: "Mamo Yield",
+    key: "mamo-yield",
+    description: "Deposit into Mamo for optimized yield across Moonwell + Morpho vaults",
+    addressKey: "MAMO_YIELD",
   },
 ];
 
@@ -119,6 +126,56 @@ async function buildInitDataForTemplate(
     const decimals = assetSymbol.toUpperCase() === "USDC" ? 6 : 18;
     const assetAmount = parseUnits(opts.amount as string, decimals);
     const agent = (opts.agent as Address) || getAccount().address;
+    const isSingleHop = !!opts.singleHop;
+
+    // Auto-quote minVVV if not specified (non-direct paths only)
+    let minVVV = 0n;
+    if (!isDirect) {
+      if (opts.minVvv) {
+        minVVV = parseUnits(opts.minVvv as string, 18);
+      } else {
+        // Quote expected VVV out and apply 5% slippage
+        const publicClient = getPublicClient();
+        const aeroRouterAbi = [{
+          name: "getAmountsOut",
+          type: "function",
+          stateMutability: "view",
+          inputs: [
+            { name: "amountIn", type: "uint256" },
+            { name: "routes", type: "tuple[]", components: [
+              { name: "from", type: "address" },
+              { name: "to", type: "address" },
+              { name: "stable", type: "bool" },
+              { name: "factory", type: "address" },
+            ]},
+          ],
+          outputs: [{ name: "amounts", type: "uint256[]" }],
+        }] as const;
+
+        const routes = isSingleHop
+          ? [{ from: asset, to: vvv, stable: false, factory: AERODROME().FACTORY }]
+          : [
+              { from: asset, to: TOKENS().WETH, stable: false, factory: AERODROME().FACTORY },
+              { from: TOKENS().WETH, to: vvv, stable: false, factory: AERODROME().FACTORY },
+            ];
+
+        try {
+          const amounts = await publicClient.readContract({
+            address: AERODROME().ROUTER,
+            abi: aeroRouterAbi,
+            functionName: "getAmountsOut",
+            args: [assetAmount, routes],
+          });
+          const expectedVVV = amounts[amounts.length - 1];
+          // 5% slippage: minVVV = expectedVVV * 95 / 100
+          minVVV = (expectedVVV * 95n) / 100n;
+          console.log(chalk.dim(`  Auto-quoted minVVV: ${(Number(minVVV) / 1e18).toFixed(4)} VVV (5% slippage on ~${(Number(expectedVVV) / 1e18).toFixed(4)} VVV)`));
+        } catch {
+          console.error(chalk.red("Could not quote USDC→VVV price. Pass --min-vvv <amount> manually."));
+          process.exit(1);
+        }
+      }
+    }
 
     const params: veniceBuilder.VeniceInferenceInitParams = {
       asset,
@@ -129,9 +186,9 @@ async function buildInitDataForTemplate(
       aeroFactory: isDirect ? ZERO : AERODROME().FACTORY,
       agent,
       assetAmount,
-      minVVV: isDirect ? 0n : parseUnits((opts.minVvv as string) || "0", 18),
+      minVVV,
       deadlineOffset: 300n,
-      singleHop: !!opts.singleHop,
+      singleHop: isSingleHop,
     };
 
     return {
@@ -213,6 +270,28 @@ async function buildInitDataForTemplate(
     };
   }
 
+  if (templateKey === "mamo-yield") {
+    if (!opts.amount) {
+      console.error(chalk.red("--amount is required for mamo-yield template"));
+      process.exit(1);
+    }
+    if (!opts.mamoFactory) {
+      console.error(chalk.red("--mamo-factory is required for mamo-yield template"));
+      process.exit(1);
+    }
+    const token = (opts.token as string) || "USDC";
+    const underlying = resolveToken(token);
+    const decimals = token.toUpperCase() === "USDC" ? 6 : 18;
+    const amount = parseUnits(opts.amount as string, decimals);
+    const minRedeemAmount = parseUnits((opts.minRedeem as string) || opts.amount as string, decimals);
+
+    return {
+      initData: mamoBuilder.buildInitData(underlying, opts.mamoFactory as Address, minRedeemAmount),
+      asset: underlying,
+      assetAmount: amount,
+    };
+  }
+
   throw new Error(`No init builder for template: ${templateKey}`);
 }
 
@@ -250,6 +329,13 @@ function buildCallsForTemplate(
     return {
       executeCalls: wstethBuilder.buildExecuteCalls(clone, asset, assetAmount),
       settleCalls: wstethBuilder.buildSettleCalls(clone),
+    };
+  }
+
+  if (templateKey === "mamo-yield") {
+    return {
+      executeCalls: mamoBuilder.buildExecuteCalls(clone, asset, assetAmount),
+      settleCalls: mamoBuilder.buildSettleCalls(clone),
     };
   }
 
@@ -339,7 +425,7 @@ export function registerStrategyTemplateCommands(strategy: Command): void {
   strategy
     .command("clone")
     .description("Clone a strategy template and initialize it")
-    .argument("<template>", "Template: moonwell-supply, aerodrome-lp, venice-inference, wsteth-moonwell")
+    .argument("<template>", "Template: moonwell-supply, aerodrome-lp, venice-inference, wsteth-moonwell, mamo-yield")
     .requiredOption("--vault <address>", "Vault address")
     // moonwell-supply / wsteth-moonwell
     .option("--amount <n>", "Asset amount to deploy")
@@ -362,6 +448,8 @@ export function registerStrategyTemplateCommands(strategy: Command): void {
     .option("--min-b-out <n>", "Min token B on settle (Aerodrome)")
     // wsteth-moonwell
     .option("--slippage <bps>", "Slippage tolerance in bps (wstETH, default: 500 = 5%)")
+    // mamo-yield
+    .option("--mamo-factory <address>", "Mamo StrategyFactory address (Mamo)")
     .action(async (templateKey: string, opts) => {
       const vault = opts.vault as Address;
       if (!isAddress(vault)) {
@@ -383,7 +471,7 @@ export function registerStrategyTemplateCommands(strategy: Command): void {
         console.log(chalk.dim(`  Tx: ${getExplorerUrl(cloneHash)}`));
       } catch (err) {
         cloneSpinner.fail("Clone failed");
-        console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+        console.error(chalk.red(formatContractError(err)));
         process.exit(1);
       }
 
@@ -402,14 +490,14 @@ export function registerStrategyTemplateCommands(strategy: Command): void {
           args: [vault, account.address, initData],
         });
 
-        const receipt = await getPublicClient().waitForTransactionReceipt({ hash: initHash });
+        const receipt = await waitForReceipt(initHash);
         if (receipt.status === "reverted") {
           throw new Error("Initialize transaction reverted on-chain");
         }
         initSpinner.succeed("Initialized");
       } catch (err) {
         initSpinner.fail("Initialize failed");
-        console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+        console.error(chalk.red(formatContractError(err)));
         process.exit(1);
       }
 
@@ -424,7 +512,7 @@ export function registerStrategyTemplateCommands(strategy: Command): void {
   strategy
     .command("init")
     .description("Initialize an already-deployed but uninitialized strategy clone")
-    .argument("<template>", "Template: moonwell-supply, aerodrome-lp, venice-inference, wsteth-moonwell")
+    .argument("<template>", "Template: moonwell-supply, aerodrome-lp, venice-inference, wsteth-moonwell, mamo-yield")
     .requiredOption("--clone <address>", "Clone address to initialize")
     .requiredOption("--vault <address>", "Vault address")
     // moonwell-supply / wsteth-moonwell
@@ -448,6 +536,8 @@ export function registerStrategyTemplateCommands(strategy: Command): void {
     .option("--min-b-out <n>", "Min token B on settle (Aerodrome)")
     // wsteth-moonwell
     .option("--slippage <bps>", "Slippage tolerance in bps (wstETH, default: 500 = 5%)")
+    // mamo-yield
+    .option("--mamo-factory <address>", "Mamo StrategyFactory address (Mamo)")
     .action(async (templateKey: string, opts) => {
       const clone = opts.clone as Address;
       const vault = opts.vault as Address;
@@ -489,7 +579,7 @@ export function registerStrategyTemplateCommands(strategy: Command): void {
           args: [vault, account.address, initData],
         });
 
-        const receipt = await publicClient.waitForTransactionReceipt({ hash: initHash });
+        const receipt = await waitForReceipt(initHash);
         if (receipt.status === "reverted") {
           throw new Error("Initialize transaction reverted on-chain");
         }
@@ -497,7 +587,7 @@ export function registerStrategyTemplateCommands(strategy: Command): void {
         console.log(chalk.dim(`  Tx: ${getExplorerUrl(initHash)}`));
       } catch (err) {
         initSpinner.fail("Initialize failed");
-        console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+        console.error(chalk.red(formatContractError(err)));
         process.exit(1);
       }
 
@@ -520,7 +610,7 @@ export function registerStrategyTemplateCommands(strategy: Command): void {
   strategy
     .command("propose")
     .description("Clone + init + build calls + submit governance proposal (all-in-one)")
-    .argument("<template>", "Template: moonwell-supply, aerodrome-lp, venice-inference, wsteth-moonwell")
+    .argument("<template>", "Template: moonwell-supply, aerodrome-lp, venice-inference, wsteth-moonwell, mamo-yield")
     .requiredOption("--vault <address>", "Vault address")
     .option("--write-calls <dir>", "Write execute/settle JSON to directory (skip proposal submission)")
     // proposal metadata (required unless --write-calls)
@@ -547,6 +637,8 @@ export function registerStrategyTemplateCommands(strategy: Command): void {
     .option("--min-b-out <n>", "Min token B on settle (Aerodrome)")
     // wsteth-moonwell
     .option("--slippage <bps>", "Slippage tolerance in bps (wstETH, default: 500 = 5%)")
+    // mamo-yield
+    .option("--mamo-factory <address>", "Mamo StrategyFactory address (Mamo)")
     .action(async (templateKey: string, opts) => {
       const vault = opts.vault as Address;
       if (!isAddress(vault)) {
@@ -566,7 +658,7 @@ export function registerStrategyTemplateCommands(strategy: Command): void {
         console.log(chalk.dim(`  Tx: ${getExplorerUrl(result.hash)}`));
       } catch (err) {
         cloneSpinner.fail("Clone failed");
-        console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+        console.error(chalk.red(formatContractError(err)));
         process.exit(1);
       }
 
@@ -592,14 +684,14 @@ export function registerStrategyTemplateCommands(strategy: Command): void {
           args: [vault, account.address, built.initData],
         });
 
-        const initReceipt = await getPublicClient().waitForTransactionReceipt({ hash: initHash });
+        const initReceipt = await waitForReceipt(initHash);
         if (initReceipt.status === "reverted") {
           throw new Error("Initialize transaction reverted on-chain");
         }
         initSpinner.succeed("Initialized");
       } catch (err) {
         initSpinner.fail("Initialize failed");
-        console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+        console.error(chalk.red(formatContractError(err)));
         process.exit(1);
       }
 
@@ -685,7 +777,7 @@ export function registerStrategyTemplateCommands(strategy: Command): void {
         metaSpinner.succeed(`Metadata pinned: ${metadataURI}`);
       } catch (err) {
         metaSpinner.fail("IPFS pin failed");
-        console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+        console.error(chalk.red(formatContractError(err)));
         process.exit(1);
       }
 
@@ -696,11 +788,12 @@ export function registerStrategyTemplateCommands(strategy: Command): void {
           executeCalls, settleCalls,
         );
         proposeSpinner.succeed(`Proposal #${proposalId} created`);
+        console.log(`Proposal #${proposalId}`);
         console.log(chalk.dim(`  Tx: ${getExplorerUrl(hash)}`));
         console.log(chalk.dim(`  Clone: ${clone}`));
       } catch (err) {
         proposeSpinner.fail("Proposal failed");
-        console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+        console.error(chalk.red(formatContractError(err)));
         process.exit(1);
       }
 

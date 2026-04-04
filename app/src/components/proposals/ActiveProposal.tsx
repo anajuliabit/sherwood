@@ -1,6 +1,5 @@
 import {
   type ProposalData,
-  ProposalState,
   formatDuration,
   formatTimeRemaining,
 } from "@/lib/governor-data";

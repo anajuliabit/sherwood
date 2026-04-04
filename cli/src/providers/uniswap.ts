@@ -17,10 +17,9 @@ import type { Address, Hex } from "viem";
 import { isAddress, isHex, formatUnits } from "viem";
 import { base, baseSepolia } from "viem/chains";
 import type { TradingProvider, ProviderInfo, SwapParams, SwapQuoteParams, TxResult, SwapQuote } from "../types.js";
-import { getPublicClient, getAccount, writeContractWithRetry } from "../lib/client.js";
+import { getPublicClient, getAccount, writeContractWithRetry, sendTxWithRetry, waitForReceipt } from "../lib/client.js";
 import { getChain } from "../lib/network.js";
 import { getUniswapApiKey } from "../lib/config.js";
-import { ERC20_ABI } from "../lib/abis.js";
 
 const API_BASE = "https://trade-api.gateway.uniswap.org/v1";
 
@@ -268,30 +267,15 @@ export class UniswapProvider implements TradingProvider {
     const data = (await res.json()) as ApprovalResponse;
 
     if (data.approval) {
-      // Submit the approval transaction
-      const hash = await writeContractWithRetry({
-        address: data.approval.to,
-        abi: ERC20_ABI,
-        functionName: "approve",
-        // Decode the approval data — the API returns the full calldata
-        // but we need to send the raw transaction
-        args: [], // unused — we send raw data
-        account,
-        chain: getChain(),
-      });
-
-      // Actually, the API returns a ready-to-send transaction, so use sendTransaction
-      // Let's use the wallet client directly
-      const { getWalletClient } = await import("../lib/client.js");
-      const wallet = getWalletClient();
-      const approvalHash = await wallet.sendTransaction({
+      // API returns a ready-to-send transaction — use sendTxWithRetry for nonce safety
+      const approvalHash = await sendTxWithRetry({
         to: data.approval.to,
         data: data.approval.data,
         value: BigInt(data.approval.value || "0"),
         account,
         chain: getChain(),
       });
-      await client.waitForTransactionReceipt({ hash: approvalHash });
+      await waitForReceipt(approvalHash);
     }
   }
 
@@ -314,12 +298,11 @@ export class UniswapProvider implements TradingProvider {
     }
 
     // 2. Get quote
-    const slippageBps = params.fee; // repurpose fee field for slippage in API mode
     const { quoteResponse } = await this.fullQuote({
       tokenIn: params.tokenIn,
       tokenOut: params.tokenOut,
       amountIn: params.amountIn,
-      slippageTolerance: 0.5, // 0.5%
+      slippageTolerance: params.slippageTolerance ?? 0.5,
     });
 
     // 3. Prepare swap request — routing-aware permitData handling
@@ -327,27 +310,30 @@ export class UniswapProvider implements TradingProvider {
     const { permitData, ...cleanQuote } = quoteRaw;
     const swapRequest: Record<string, unknown> = { ...cleanQuote };
 
-    // UniswapX routes: permitData is for local signing only, must NOT be sent to /swap
-    // For CLASSIC routes without Permit2: omit both signature and permitData
-    // (We use direct approval via /check_approval, not Permit2)
-    if (isUniswapXRouting(quoteResponse.routing)) {
-      // UniswapX: sign the order with permitData locally
-      if (permitData && typeof permitData === "object") {
-        const typedData = permitData as {
-          domain: Record<string, unknown>;
-          types: Record<string, unknown>;
-          values: Record<string, unknown>;
-        };
-        const signature = await account.signTypedData({
-          domain: typedData.domain as Record<string, unknown>,
-          types: typedData.types as Record<string, Array<{ name: string; type: string }>>,
-          primaryType: Object.keys(typedData.types).find((k) => k !== "EIP712Domain") ?? "PermitWitnessTransferFrom",
-          message: typedData.values,
-        });
-        swapRequest.signature = signature;
+    // Sign permitData if present (required for both CLASSIC and UniswapX).
+    // For CLASSIC routes using Permit2 (PermitSingle): include BOTH permitData + signature.
+    // For UniswapX routes: include signature only (order-level signing, no permitData in body).
+    if (permitData && typeof permitData === "object") {
+      const typedData = permitData as {
+        domain: Record<string, unknown>;
+        types: Record<string, unknown>;
+        values: Record<string, unknown>;
+      };
+      const primaryType =
+        Object.keys(typedData.types).find((k) => k !== "EIP712Domain") ?? "PermitSingle";
+      const signature = await account.signTypedData({
+        domain: typedData.domain as Record<string, unknown>,
+        types: typedData.types as Record<string, Array<{ name: string; type: string }>>,
+        primaryType,
+        message: typedData.values,
+      });
+      swapRequest.signature = signature;
+      // CLASSIC routes: /swap requires both permitData and signature
+      // UniswapX routes: /swap requires signature only (order is in quote body)
+      if (!isUniswapXRouting(quoteResponse.routing)) {
+        swapRequest.permitData = permitData;
       }
     }
-    // For CLASSIC: no signature/permitData needed (we use /check_approval)
 
     // 4. Get swap transaction
     const swapRes = await fetchWithRetry(`${API_BASE}/swap`, {
@@ -371,18 +357,22 @@ export class UniswapProvider implements TradingProvider {
       throw new Error("Invalid address in swap response");
     }
 
-    // 6. Sign and broadcast
-    const { getWalletClient } = await import("../lib/client.js");
-    const wallet = getWalletClient();
-    const hash = await wallet.sendTransaction({
+    // 6. Sign and broadcast with retry-aware sender
+    // Apply a 1.5x buffer to the API's gasLimit: the Uniswap API under-estimates for WETH
+    // and other non-USDC inputs where PermitSingle+transfer adds overhead.
+    const gasLimit = swapData.swap.gasLimit
+      ? (BigInt(swapData.swap.gasLimit) * 150n) / 100n
+      : undefined;
+    const hash = await sendTxWithRetry({
       to: swapData.swap.to,
       data: swapData.swap.data,
       value: BigInt(swapData.swap.value || "0"),
+      gas: gasLimit,
       account,
       chain: getChain(),
     });
 
-    const receipt = await client.waitForTransactionReceipt({ hash });
+    const receipt = await waitForReceipt(hash);
     return {
       hash,
       success: receipt.status === "success",

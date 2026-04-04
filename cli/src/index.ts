@@ -15,7 +15,7 @@ import { setNetwork, getNetwork, VALID_NETWORKS } from "./lib/network.js";
 import { getExplorerUrl, getChain } from "./lib/network.js";
 import type { Network } from "./lib/network.js";
 import { TOKENS } from "./lib/addresses.js";
-import { getPublicClient, getAccount } from "./lib/client.js";
+import { getPublicClient, getAccount, formatContractError } from "./lib/client.js";
 import { ERC20_ABI } from "./lib/abis.js";
 import { MoonwellProvider } from "./providers/moonwell.js";
 import { UniswapProvider } from "./providers/uniswap.js";
@@ -44,7 +44,7 @@ async function loadXmtp() {
 async function loadCron() {
   return import("./lib/cron.js");
 }
-import { cacheGroupId, getCachedGroupId, setChainContract, getChainContracts, loadConfig, setPrivateKey, getAgentId, setConfigRpcUrl, getNotifyTo, setNotifyTo, setUniswapApiKey, getUniswapApiKey, setVeniceApiKey, getVeniceApiKey } from "./lib/config.js";
+import { cacheGroupId, getCachedGroupId, setChainContract, getChainContracts, loadConfig, setPrivateKey, getAgentId, setConfigRpcUrl, getNotifyTo, setNotifyTo, setUniswapApiKey, getUniswapApiKey, setVeniceApiKey, getVeniceApiKey, addSyndicate, getSyndicates, setPrimarySyndicate, getPrimarySyndicate } from "./lib/config.js";
 import { isTestnet } from "./lib/network.js";
 
 // ── Theme ──
@@ -263,7 +263,81 @@ syndicate
         }
       }
 
-      // ── Deploy ──
+      // ── Idempotent check: resume if subdomain already exists ──
+      const existingId = await factoryLib.subdomainExists(subdomain);
+      if (existingId !== null) {
+        const existingInfo = await factoryLib.getSyndicate(existingId);
+        const callerAddress = getAccount().address.toLowerCase();
+
+        if (existingInfo.creator.toLowerCase() !== callerAddress) {
+          console.error(chalk.red(`\n  ✖ Subdomain '${subdomain}' is already taken by another syndicate.\n`));
+          process.exit(1);
+        }
+
+        // Partial completion — creator already deployed, resume post-deploy steps
+        console.log(chalk.yellow(`\n  ⚠ Syndicate '${subdomain}' already exists — resuming setup...\n`));
+
+        const spinner = ora({ text: W("Resuming setup..."), color: "green" }).start();
+
+        // Save to config
+        const chainId = getChain().id;
+        setChainContract(chainId, "vault", existingInfo.vault);
+        addSyndicate(chainId, { subdomain, vault: existingInfo.vault, role: "creator" });
+        setPrimarySyndicate(chainId, subdomain);
+
+        // Register creator as agent (if not already)
+        spinner.text = W("Checking agent registration...");
+        try {
+          vaultLib.setVaultAddress(existingInfo.vault);
+          const isAlreadyAgent = await vaultLib.isAgent(getAccount().address);
+          if (!isAlreadyAgent) {
+            spinner.text = W("Registering creator as agent...");
+            await vaultLib.registerAgent(BigInt(agentIdStr), getAccount().address);
+          }
+        } catch { /* non-fatal */ }
+
+        // Create XMTP group (if not already)
+        spinner.text = W("Checking chat group...");
+        try {
+          const xmtp = await loadXmtp();
+          const xmtpClient = await xmtp.getXmtpClient();
+          try {
+            await xmtp.getGroup(xmtpClient, subdomain);
+            // Group exists, skip
+          } catch {
+            // No group — create one
+            spinner.text = W("Creating chat group...");
+            const groupId = await xmtp.createSyndicateGroup(xmtpClient, subdomain, opts.publicChat);
+            await setTextRecord(subdomain, "xmtpGroupId", groupId, existingInfo.vault as Address);
+            cacheGroupId(subdomain, groupId);
+          }
+        } catch {
+          console.warn(chalk.yellow("\n  ⚠ Could not set up XMTP chat group"));
+        }
+
+        // Register crons
+        try {
+          const cron = await loadCron();
+          cron.registerSyndicateCrons(subdomain, isTestnet(), getNotifyTo());
+        } catch { /* non-fatal */ }
+
+        spinner.stop();
+        console.log();
+        console.log(LABEL("  ◆ Syndicate Setup Resumed"));
+        SEP();
+        console.log(W(`  ID:       ${G(`#${existingId}`)}`));
+        console.log(W(`  Vault:    ${G(existingInfo.vault)}`));
+        console.log(W(`  ENS:      ${G(`${subdomain}.sherwoodagent.eth`)}`));
+        console.log(W(`  Chat:     ${DIM(`sherwood chat ${subdomain}`)}`));
+        const refParam = getAgentId() ? `?ref=${getAgentId()}` : "";
+        console.log(W(`  Share:    ${G(`https://sherwood.sh/syndicate/${subdomain}${refParam}`)}`));
+        SEP();
+        console.log(G("  ✓ Syndicate saved to ~/.sherwood/config.json (set as primary)"));
+        console.log();
+        return;
+      }
+
+      // ── Deploy (fresh syndicate) ──
       const spinner = ora({ text: W("Deploying vault via factory..."), color: "green" }).start();
 
       const result = await factoryLib.createSyndicate({
@@ -276,8 +350,11 @@ syndicate
         subdomain,
       });
 
-      // Auto-save vault address to config
-      setChainContract(getChain().id, "vault", result.vault);
+      // Auto-save vault address + syndicate membership to config
+      const chainId = getChain().id;
+      setChainContract(chainId, "vault", result.vault);
+      addSyndicate(chainId, { subdomain, vault: result.vault, role: "creator" });
+      setPrimarySyndicate(chainId, subdomain);
 
       // ── Register creator as agent on the vault ──
       // Brief delay to let the RPC node sync its nonce after createSyndicate tx
@@ -332,11 +409,13 @@ syndicate
       console.log(W(`  Metadata: ${DIM(metadataURI.length > 50 ? metadataURI.slice(0, 50) + "..." : metadataURI)}`));
       console.log(W(`  Explorer: ${DIM(getExplorerUrl(result.hash))}`));
       console.log(W(`  Chat:     ${DIM(`sherwood chat ${subdomain}`)}`));
+      const refParam = getAgentId() ? `?ref=${getAgentId()}` : "";
+      console.log(W(`  Share:    ${G(`https://sherwood.sh/syndicate/${subdomain}${refParam}`)}`));
       SEP();
-      console.log(G("  ✓ Vault saved to ~/.sherwood/config.json"));
+      console.log(G("  ✓ Syndicate saved to ~/.sherwood/config.json (set as primary)"));
       console.log();
     } catch (err) {
-      console.error(chalk.red(`\n  ✖ ${err instanceof Error ? err.message : String(err)}`));
+      console.error(chalk.red(`\n  ✖ ${formatContractError(err)}`));
       process.exit(1);
     }
   });
@@ -398,7 +477,7 @@ syndicate
       }
     } catch (err) {
       spinner.fail("Failed to load syndicates");
-      console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+      console.error(chalk.red(formatContractError(err)));
       process.exit(1);
     }
   });
@@ -446,7 +525,7 @@ syndicate
       console.log();
     } catch (err) {
       spinner.fail("Failed to load syndicate info");
-      console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+      console.error(chalk.red(formatContractError(err)));
       process.exit(1);
     }
   });
@@ -494,7 +573,7 @@ syndicate
       console.log(DIM(`  ${getExplorerUrl(hash)}`));
     } catch (err) {
       spinner.fail("Metadata update failed");
-      console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+      console.error(chalk.red(formatContractError(err)));
       process.exit(1);
     }
   });
@@ -514,7 +593,7 @@ syndicate
       console.log(chalk.dim(`  ${getExplorerUrl(hash)}`));
     } catch (err) {
       spinner.fail("Approval failed");
-      console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+      console.error(chalk.red(formatContractError(err)));
       process.exit(1);
     }
   });
@@ -534,7 +613,7 @@ syndicate
       console.log(chalk.dim(`  ${getExplorerUrl(hash)}`));
     } catch (err) {
       spinner.fail("Removal failed");
-      console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+      console.error(chalk.red(formatContractError(err)));
       process.exit(1);
     }
   });
@@ -588,7 +667,54 @@ syndicate
       }
     } catch (err) {
       spinner.fail("Registration failed");
-      console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+      console.error(chalk.red(formatContractError(err)));
+      process.exit(1);
+    }
+  });
+
+syndicate
+  .command("share")
+  .description("Print the shareable dashboard URL for your syndicate")
+  .option("--subdomain <name>", "Syndicate subdomain (default: primary)")
+  .action(async (opts) => {
+    try {
+      const subdomain = opts.subdomain || getPrimarySyndicate(getChain().id)?.subdomain;
+      if (!subdomain) {
+        console.error(chalk.red("  No syndicate configured. Pass --subdomain <name> or run 'syndicate create/join' first."));
+        process.exit(1);
+      }
+
+      // Verify syndicate exists on-chain
+      const syndicateInfo = await resolveSyndicate(subdomain);
+
+      const agentId = getAgentId();
+      const refParam = agentId ? `?ref=${agentId}` : "";
+      const dashboardUrl = `https://sherwood.sh/syndicate/${subdomain}${refParam}`;
+
+      console.log();
+      console.log(LABEL("  ◆ Share Your Syndicate"));
+      SEP();
+      console.log(W(`  Dashboard:  ${G(dashboardUrl)}`));
+      console.log(W(`  ENS:        ${DIM(`${subdomain}.sherwoodagent.eth`)}`));
+      console.log(W(`  Vault:      ${DIM(syndicateInfo.vault)}`));
+      console.log(W(`  Join CLI:   ${DIM(`sherwood syndicate join --subdomain ${subdomain}`)}`));
+      SEP();
+
+      // Try to copy to clipboard (optional — uses pbcopy/xclip if available)
+      try {
+        const { exec } = await import("node:child_process");
+        const platform = (await import("node:os")).platform();
+        const cmd = platform === "darwin" ? "pbcopy" : "xclip -selection clipboard";
+        const proc = exec(cmd);
+        proc.stdin?.write(dashboardUrl);
+        proc.stdin?.end();
+        console.log(G("  ✓ Dashboard URL copied to clipboard"));
+      } catch {
+        // clipboard not available — no problem
+      }
+      console.log();
+    } catch (err) {
+      console.error(chalk.red(`  ✖ ${formatContractError(err)}`));
       process.exit(1);
     }
   });
@@ -598,18 +724,25 @@ syndicate
 syndicate
   .command("join")
   .description("Request to join a syndicate (creates an EAS attestation)")
-  .requiredOption("--subdomain <name>", "Syndicate subdomain to join")
+  .option("--subdomain <name>", "Syndicate subdomain to join")
+  .option("--ref <agentId>", "Referrer agent ID (from invite link)")
   .option("--message <text>", "Message to the creator", "Requesting to join your syndicate")
   .action(async (opts) => {
     const spinner = ora("Resolving syndicate...").start();
     try {
+      const subdomain = opts.subdomain || getPrimarySyndicate(getChain().id)?.subdomain;
+      if (!subdomain) {
+        spinner.fail("No syndicate configured. Pass --subdomain <name> or run 'syndicate create' first.");
+        process.exit(1);
+      }
+
       const agentId = getAgentId();
       if (!agentId) {
         spinner.fail("No agent identity found. Run 'sherwood identity mint' first.");
         process.exit(1);
       }
 
-      const syndicate = await resolveSyndicate(opts.subdomain);
+      const syndicate = await resolveSyndicate(subdomain);
       const callerAddress = getAccount().address;
 
       // Check if already registered as an agent on this vault
@@ -629,11 +762,11 @@ syndicate
         // Auto-register participation crons (idempotent)
         try {
           const cron = await loadCron();
-          const cronResult = cron.registerSyndicateCrons(opts.subdomain, isTestnet(), getNotifyTo());
+          const cronResult = cron.registerSyndicateCrons(subdomain, isTestnet(), getNotifyTo());
           if (cronResult.isOpenClaw && cronResult.registered) {
             console.log(chalk.green("  ✓ Participation crons registered"));
           } else if (!cronResult.isOpenClaw) {
-            console.log(chalk.dim("  Tip: Set up a scheduled process to run `sherwood session check " + opts.subdomain + "` periodically"));
+            console.log(chalk.dim("  Tip: Set up a scheduled process to run `sherwood session check " + subdomain + "` periodically"));
           }
         } catch { /* non-fatal */ }
         return;
@@ -662,12 +795,14 @@ syndicate
       }
 
       spinner.text = "Creating join request attestation...";
+      const referrerAgentId = opts.ref ? parseInt(opts.ref, 10) : undefined;
       const { uid, hash } = await easLib.createJoinRequest(
         syndicate.id,
         BigInt(agentId),
         syndicate.vault,
         syndicate.creator,
         opts.message,
+        referrerAgentId,
       );
 
       // Pre-register XMTP identity so the creator can add us to the group on approval
@@ -681,33 +816,38 @@ syndicate
         console.warn(chalk.yellow("  ⚠ Could not initialize XMTP identity — creator may not be able to auto-add you to chat"));
       }
 
+      // Save syndicate membership + set as primary
+      addSyndicate(getChain().id, { subdomain, vault: syndicate.vault, role: "agent" });
+      setPrimarySyndicate(getChain().id, subdomain);
+
       // Auto-register participation crons (will HEARTBEAT_OK until approved)
       try {
         const cron = await loadCron();
-        const cronResult = cron.registerSyndicateCrons(opts.subdomain, isTestnet(), getNotifyTo());
+        const cronResult = cron.registerSyndicateCrons(subdomain, isTestnet(), getNotifyTo());
         if (cronResult.isOpenClaw && cronResult.registered) {
           console.log(G("  ✓ Participation crons registered (will activate after approval)"));
         } else if (!cronResult.isOpenClaw) {
-          console.log(DIM("  Tip: Set up a scheduled process to run `sherwood session check " + opts.subdomain + "` periodically"));
+          console.log(DIM("  Tip: Set up a scheduled process to run `sherwood session check " + subdomain + "` periodically"));
         }
       } catch { /* non-fatal */ }
 
       console.log();
       console.log(LABEL("  ◆ Join Request Submitted"));
       SEP();
-      console.log(W(`  Syndicate:    ${G(`${opts.subdomain}.sherwoodagent.eth`)}`));
+      console.log(W(`  Syndicate:    ${G(`${subdomain}.sherwoodagent.eth`)}`));
       console.log(W(`  Agent ID:     #${agentId}`));
       console.log(W(`  Creator:      ${DIM(syndicate.creator)}`));
       console.log(W(`  Attestation:  ${DIM(uid)}`));
       console.log(W(`  EAS Scan:     ${DIM(easLib.getEasScanUrl(uid))}`));
       console.log(W(`  Explorer:     ${DIM(getExplorerUrl(hash))}`));
       SEP();
+      console.log(G("  ✓ Syndicate saved to ~/.sherwood/config.json (set as primary)"));
       console.log(G("  ✓ The creator can review with:"));
-      console.log(DIM(`    sherwood syndicate requests --subdomain ${opts.subdomain}`));
+      console.log(DIM(`    sherwood syndicate requests --subdomain ${subdomain}`));
       console.log();
     } catch (err) {
       spinner.fail("Join request failed");
-      console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+      console.error(chalk.red(formatContractError(err)));
       process.exit(1);
     }
   });
@@ -724,10 +864,12 @@ syndicate
       let subdomain: string;
       let syndicateVault: Address;
 
-      if (opts.subdomain) {
-        const syndicateInfo = await resolveSyndicate(opts.subdomain);
+      // Resolve syndicate: --subdomain > primary syndicate > --vault > config vault
+      const resolvedSubdomain = opts.subdomain || getPrimarySyndicate(getChain().id)?.subdomain;
+      if (resolvedSubdomain) {
+        const syndicateInfo = await resolveSyndicate(resolvedSubdomain);
         creatorAddress = syndicateInfo.creator;
-        subdomain = opts.subdomain;
+        subdomain = resolvedSubdomain;
         syndicateVault = syndicateInfo.vault as Address;
       } else {
         resolveVault(opts);
@@ -775,8 +917,13 @@ syndicate
       for (let i = 0; i < requests.length; i++) {
         const req = requests[i];
         const date = new Date(req.time * 1000).toLocaleString();
+        const referrer = easLib.parseReferrer(req.decoded.message);
+        const cleanMessage = easLib.stripReferrerPrefix(req.decoded.message);
         console.log(W(`  ${i + 1}. Agent #${req.decoded.agentId} ${DIM(`(${req.attester})`)}`));
-        console.log(DIM(`     Message:     "${req.decoded.message}"`));
+        console.log(DIM(`     Message:     "${cleanMessage}"`));
+        if (referrer !== null) {
+          console.log(G(`     Referred by: Agent #${referrer}`));
+        }
         console.log(DIM(`     Requested:   ${date}`));
         console.log(DIM(`     Attestation: ${req.uid}`));
         console.log();
@@ -789,7 +936,7 @@ syndicate
       console.log();
     } catch (err) {
       spinner.fail("Failed to load requests");
-      console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+      console.error(chalk.red(formatContractError(err)));
       process.exit(1);
     }
   });
@@ -804,9 +951,10 @@ syndicate
   .action(async (opts) => {
     const spinner = ora("Verifying creator...").start();
     try {
-      // Resolve vault from subdomain or --vault/config
-      if (opts.subdomain && !opts.vault) {
-        const syndicateInfo = await resolveSyndicate(opts.subdomain);
+      // Resolve vault: --subdomain > primary syndicate > --vault > config vault
+      const approveSubdomain = opts.subdomain || getPrimarySyndicate(getChain().id)?.subdomain;
+      if (approveSubdomain && !opts.vault) {
+        const syndicateInfo = await resolveSyndicate(approveSubdomain);
         vaultLib.setVaultAddress(syndicateInfo.vault);
       } else {
         resolveVault(opts);
@@ -899,7 +1047,7 @@ syndicate
       SEP();
     } catch (err) {
       spinner.fail("Approval failed");
-      console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+      console.error(chalk.red(formatContractError(err)));
       process.exit(1);
     }
   });
@@ -919,7 +1067,121 @@ syndicate
       console.log(DIM(`  ${getExplorerUrl(hash)}`));
     } catch (err) {
       spinner.fail("Rejection failed");
+      console.error(chalk.red(formatContractError(err)));
+      process.exit(1);
+    }
+  });
+
+syndicate
+  .command("leave")
+  .description("Leave a syndicate — removes participation crons and session state")
+  .option("--subdomain <name>", "Syndicate subdomain to leave")
+  .action(async (opts) => {
+    const subdomain = opts.subdomain || getPrimarySyndicate(getChain().id)?.subdomain;
+    if (!subdomain) {
+      console.error(chalk.red("  No syndicate configured. Pass --subdomain <name>."));
+      process.exit(1);
+    }
+    const spinner = ora("Cleaning up...").start();
+    try {
+      // 1. Remove participation crons (if OpenClaw)
+      let cronsRemoved = false;
+      try {
+        const cron = await loadCron();
+        const result = cron.unregisterSyndicateCrons(subdomain, isTestnet());
+        cronsRemoved = result.removed;
+      } catch { /* non-fatal */ }
+
+      // 2. Reset session state
+      const { resetSession } = await import("./lib/session.js");
+      resetSession(subdomain);
+
+      spinner.succeed("Left syndicate");
+      if (cronsRemoved) {
+        console.log(G("  ✓ Participation crons removed"));
+      }
+      console.log(G("  ✓ Session state cleared"));
+      console.log();
+      console.log(chalk.dim("  Note: This does not remove you on-chain. To exit your position:"));
+      console.log(chalk.dim("    sherwood vault balance   — check your LP share balance"));
+      console.log(chalk.dim("    Redeem shares via the vault contract or dashboard"));
+      console.log();
+    } catch (err) {
+      spinner.fail("Leave failed");
       console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+      process.exit(1);
+    }
+  });
+
+syndicate
+  .command("set-primary")
+  .description("Set the active syndicate for CLI commands (auto-used when --subdomain is omitted)")
+  .option("--subdomain <name>", "Syndicate subdomain")
+  .option("--vault <address>", "Vault address")
+  .action(async (opts) => {
+    try {
+      const chainId = getChain().id;
+      const memberships = getSyndicates(chainId);
+
+      if (!opts.subdomain && !opts.vault) {
+        // List syndicates and show which is primary
+        const primary = getPrimarySyndicate(chainId);
+        if (memberships.length === 0) {
+          console.log(DIM("\n  No syndicates saved. Create or join one first.\n"));
+          return;
+        }
+        console.log();
+        console.log(LABEL("  ◆ Your Syndicates"));
+        SEP();
+        for (const m of memberships) {
+          const isPrimary = primary?.subdomain === m.subdomain;
+          const marker = isPrimary ? G(" ★") : "";
+          console.log(W(`  ${m.subdomain}.sherwoodagent.eth${marker}  ${DIM(`(${m.role})`)}`));
+          console.log(DIM(`    vault: ${m.vault}`));
+        }
+        SEP();
+        if (memberships.length > 1) {
+          console.log(DIM("  Switch with: sherwood syndicate set-primary --subdomain <name>"));
+        }
+        console.log();
+        return;
+      }
+
+      let target: string | undefined;
+
+      if (opts.subdomain) {
+        // Verify it's in our list
+        const found = memberships.find((m) => m.subdomain === opts.subdomain);
+        if (!found) {
+          // Resolve on-chain to verify it exists, then add it
+          const syndicateInfo = await resolveSyndicate(opts.subdomain);
+          addSyndicate(chainId, { subdomain: opts.subdomain, vault: syndicateInfo.vault, role: "agent" });
+        }
+        target = opts.subdomain;
+      } else if (opts.vault) {
+        // Find by vault address
+        const found = memberships.find(
+          (m) => m.vault.toLowerCase() === opts.vault.toLowerCase(),
+        );
+        if (found) {
+          target = found.subdomain;
+        } else {
+          // Resolve on-chain
+          const syndicateInfo = await resolveVaultSyndicate(validateAddress(opts.vault, "vault"));
+          addSyndicate(chainId, { subdomain: syndicateInfo.subdomain, vault: opts.vault, role: "agent" });
+          target = syndicateInfo.subdomain;
+        }
+      }
+
+      if (!target) {
+        console.error(chalk.red("  Could not resolve syndicate. Pass --subdomain or --vault."));
+        process.exit(1);
+      }
+
+      setPrimarySyndicate(chainId, target);
+      console.log(G(`\n  ✓ Primary syndicate set to ${target}.sherwoodagent.eth\n`));
+    } catch (err) {
+      console.error(chalk.red(formatContractError(err)));
       process.exit(1);
     }
   });
@@ -932,18 +1194,36 @@ vaultCmd
   .description("Deposit into a vault")
   .option("--vault <address>", "Vault address (default: from config)")
   .requiredOption("--amount <amount>", "Amount to deposit (in asset units)")
+  .option("--use-eth", "Auto-wrap ETH → WETH before depositing (for WETH vaults)")
   .action(async (opts) => {
     resolveVault(opts);
     const decimals = await vaultLib.getAssetDecimals();
     const amount = parseUnits(opts.amount, decimals);
+
+    // Pre-flight checks — catch issues before submitting transactions
+    try {
+      if (!opts.useEth) {
+        await vaultLib.preflightDeposit(amount);
+      }
+    } catch (err) {
+      console.error(chalk.red(`\n  ✖ ${err instanceof Error ? err.message : String(err)}\n`));
+      process.exit(1);
+    }
+
     const spinner = ora(`Depositing ${opts.amount}...`).start();
     try {
-      const hash = await vaultLib.deposit(amount);
+      let hash;
+      if (opts.useEth) {
+        spinner.text = `Wrapping ETH + depositing ${opts.amount}...`;
+        hash = await vaultLib.depositWithEthWrap(amount);
+      } else {
+        hash = await vaultLib.deposit(amount);
+      }
       spinner.succeed(`Deposited: ${hash}`);
       console.log(chalk.dim(`  ${getExplorerUrl(hash)}`));
     } catch (err) {
       spinner.fail("Deposit failed");
-      console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+      console.error(chalk.red(formatContractError(err)));
       process.exit(1);
     }
   });
@@ -969,7 +1249,7 @@ vaultCmd
       console.log();
     } catch (err) {
       spinner.fail("Failed to load vault info");
-      console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+      console.error(chalk.red(formatContractError(err)));
       process.exit(1);
     }
   });
@@ -994,7 +1274,7 @@ vaultCmd
       console.log();
     } catch (err) {
       spinner.fail("Failed to load balance");
-      console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+      console.error(chalk.red(formatContractError(err)));
       process.exit(1);
     }
   });

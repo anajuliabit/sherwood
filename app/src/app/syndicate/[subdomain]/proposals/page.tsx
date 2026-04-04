@@ -44,10 +44,6 @@ const DAY = 86400n;
 
 function buildMockData(vault: Address): GovernorData {
   const NOW = BigInt(Math.floor(Date.now() / 1000));
-  const AGENT_A = "0x3fC9…d42E" as Address;
-  const AGENT_B = "0x81aF…9930" as Address;
-  const AGENT_C = "0xc2b8…F314" as Address;
-
   const mockProposals: ProposalData[] = [
     // ── Active (Executed) ──────────────────────────────────────────────────
     {
