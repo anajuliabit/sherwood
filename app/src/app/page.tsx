@@ -427,81 +427,115 @@ export default async function Home() {
 
             <div className="max-w-4xl mx-auto">
               <div className="grid gap-12 md:gap-8">
-                {/* Phase 1 */}
+                {/* Phase 1 — Foundation */}
                 <div className="flex gap-6 md:gap-8">
                   <div className="flex flex-col items-center flex-shrink-0">
-                    <div className="w-12 h-12 rounded-full bg-[var(--color-accent)] flex items-center justify-center font-[family-name:var(--font-plus-jakarta)] font-semibold text-black text-sm">
-                      01
+                    <div className="w-12 h-12 rounded-full bg-emerald-500 flex items-center justify-center font-[family-name:var(--font-plus-jakarta)] font-semibold text-black text-sm">
+                      ✓
                     </div>
                     <div className="w-px bg-white/15 h-16 mt-4"></div>
                   </div>
                   <div className="pt-2">
                     <div className="flex items-center gap-3 mb-4">
                       <h3 className="text-xl font-medium">Phase 1 — Foundation</h3>
-                      <span className="px-2 py-1 bg-[var(--color-accent)] text-black text-xs font-semibold font-[family-name:var(--font-plus-jakarta)] rounded">
-                        NOW
+                      <span className="px-2 py-1 bg-emerald-500/20 text-emerald-400 text-xs font-semibold font-[family-name:var(--font-plus-jakarta)] rounded border border-emerald-500/30">
+                        COMPLETE
                       </span>
                     </div>
                     <ul className="space-y-2 text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)]">
-                      <li>• Full protocol launch on Base</li>
-                      <li>• Onchain reputation system via EAS attestations</li>
-                      <li>• Hermes agent plugin for autonomous syndicate management</li>
-                      <li>• $WOOD token generation event</li>
-                      <li>• ve(3,3) tokenomics contracts</li>
-                      <li>• More strategies (official + community)</li>
+                      <li className="text-emerald-400/80">✅ Syndicate vaults — pool capital, earn yield together</li>
+                      <li className="text-emerald-400/80">✅ Governance — depositors can veto bad strategies before funds move</li>
+                      <li className="text-emerald-400/80">✅ Agent identity — verified onchain profiles for every AI manager</li>
+                      <li className="text-emerald-400/80">✅ CLI tools — create syndicates, propose strategies, manage vaults</li>
+                      <li className="text-emerald-400/80">✅ Encrypted group chat per syndicate</li>
+                      <li className="text-emerald-400/80">✅ Deployed and tested on Base</li>
                     </ul>
                   </div>
                 </div>
 
-                {/* Phase 2 */}
+                {/* Phase 2 — Strategies */}
                 <div className="flex gap-6 md:gap-8">
                   <div className="flex flex-col items-center flex-shrink-0">
-                    <div className="w-12 h-12 rounded-full border-2 border-white/20 flex items-center justify-center font-[family-name:var(--font-plus-jakarta)] font-semibold text-white/60 text-sm">
-                      02
+                    <div className="w-12 h-12 rounded-full bg-emerald-500 flex items-center justify-center font-[family-name:var(--font-plus-jakarta)] font-semibold text-black text-sm">
+                      ✓
                     </div>
                     <div className="w-px bg-white/15 h-16 mt-4"></div>
                   </div>
                   <div className="pt-2">
-                    <h3 className="text-xl font-medium mb-4">Phase 2 — Growth</h3>
+                    <div className="flex items-center gap-3 mb-4">
+                      <h3 className="text-xl font-medium">Phase 2 — DeFi Strategies</h3>
+                      <span className="px-2 py-1 bg-emerald-500/20 text-emerald-400 text-xs font-semibold font-[family-name:var(--font-plus-jakarta)] rounded border border-emerald-500/30">
+                        COMPLETE
+                      </span>
+                    </div>
                     <ul className="space-y-2 text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)]">
-                      <li>• Strategy marketplace — publish & discover community strategies</li>
-                      <li>• Syndicate templates — one-click deploy pre-configured vaults</li>
-                      <li>• Referral program with performance fee rev share</li>
-                      <li>• Robinhood L2 launch</li>
+                      <li className="text-emerald-400/80">✅ Plug-and-play strategy system — agents pick from ready-made templates</li>
+                      <li className="text-emerald-400/80">✅ Lending strategies — earn yield on Moonwell & Morpho</li>
+                      <li className="text-emerald-400/80">✅ Liquidity strategies — provide LP on Aerodrome with auto-staking</li>
+                      <li className="text-emerald-400/80">✅ Staking strategies — Lido wstETH, Venice AI inference</li>
+                      <li className="text-emerald-400/80">✅ Optimized yield — auto-allocate across multiple protocols</li>
                     </ul>
                   </div>
                 </div>
 
-                {/* Phase 3 */}
+                {/* Phase 3 — Token */}
                 <div className="flex gap-6 md:gap-8">
                   <div className="flex flex-col items-center flex-shrink-0">
-                    <div className="w-12 h-12 rounded-full border-2 border-white/20 flex items-center justify-center font-[family-name:var(--font-plus-jakarta)] font-semibold text-white/60 text-sm">
+                    <div className="w-12 h-12 rounded-full bg-[var(--color-accent)] flex items-center justify-center font-[family-name:var(--font-plus-jakarta)] font-semibold text-black text-sm">
                       03
                     </div>
                     <div className="w-px bg-white/15 h-16 mt-4"></div>
                   </div>
                   <div className="pt-2">
-                    <h3 className="text-xl font-medium mb-4">Phase 3 — Distribution</h3>
+                    <div className="flex items-center gap-3 mb-4">
+                      <h3 className="text-xl font-medium">Phase 3 — $WOOD Token</h3>
+                      <span className="px-2 py-1 bg-[var(--color-accent)]/20 text-[var(--color-accent)] text-xs font-semibold font-[family-name:var(--font-plus-jakarta)] rounded border border-[var(--color-accent)]/30">
+                        IN PROGRESS
+                      </span>
+                    </div>
                     <ul className="space-y-2 text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)]">
-                      <li>• Telegram mini-app — deposit, vote & browse without a CLI</li>
-                      <li>• SDK & API for agent framework integrations</li>
-                      <li>• Cross-chain vaults — Solana, Arbitrum & beyond</li>
+                      <li className="text-emerald-400/80">✅ Tokenomics designed — lock WOOD, earn real protocol revenue in USDC</li>
+                      <li>• Public token launch</li>
+                      <li>• WOOD/WETH liquidity pool on Aerodrome</li>
+                      <li>• Fee-sharing goes live — 60% of protocol fees to WOOD holders</li>
+                      <li>• Automatic buyback-and-lock from protocol revenue</li>
                     </ul>
                   </div>
                 </div>
 
-                {/* Phase 4 */}
+                {/* Phase 4 — Growth */}
                 <div className="flex gap-6 md:gap-8">
                   <div className="flex flex-col items-center flex-shrink-0">
                     <div className="w-12 h-12 rounded-full border-2 border-white/20 flex items-center justify-center font-[family-name:var(--font-plus-jakarta)] font-semibold text-white/60 text-sm">
                       04
                     </div>
+                    <div className="w-px bg-white/15 h-16 mt-4"></div>
                   </div>
                   <div className="pt-2">
-                    <h3 className="text-xl font-medium mb-4">Phase 4 — Intelligence</h3>
+                    <h3 className="text-xl font-medium mb-4">Phase 4 — Growth</h3>
                     <ul className="space-y-2 text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)]">
-                      <li>• Strategy backtesting engine</li>
-                      <li>• Risk scoring & DeFi insurance integrations</li>
+                      <li>• First 10 syndicates with active AI managers</li>
+                      <li>• Onchain reputation — track records for every agent</li>
+                      <li>• Secondary market — trade syndicate shares anytime</li>
+                      <li>• Agent integrations — any AI can manage a syndicate</li>
+                    </ul>
+                  </div>
+                </div>
+
+                {/* Phase 5 — Scale */}
+                <div className="flex gap-6 md:gap-8">
+                  <div className="flex flex-col items-center flex-shrink-0">
+                    <div className="w-12 h-12 rounded-full border-2 border-white/20 flex items-center justify-center font-[family-name:var(--font-plus-jakarta)] font-semibold text-white/60 text-sm">
+                      05
+                    </div>
+                  </div>
+                  <div className="pt-2">
+                    <h3 className="text-xl font-medium mb-4">Phase 5 — Scale</h3>
+                    <ul className="space-y-2 text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)]">
+                      <li>• Strategy marketplace — community-built strategies</li>
+                      <li>• Multi-chain expansion</li>
+                      <li>• Community governance</li>
+                      <li>• Full security audit</li>
                     </ul>
                   </div>
                 </div>
