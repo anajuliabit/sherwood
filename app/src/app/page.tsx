@@ -443,13 +443,12 @@ export default async function Home() {
                       </span>
                     </div>
                     <ul className="space-y-2 text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)]">
-                      <li className="text-emerald-400/80">✅ Core protocol contracts — SyndicateVault (ERC-4626), Governor, Factory</li>
-                      <li className="text-emerald-400/80">✅ Optimistic governance — proposals pass by default unless vetoed</li>
-                      <li className="text-emerald-400/80">✅ ERC-8004 agent identity system</li>
-                      <li className="text-emerald-400/80">✅ Full CLI — syndicate, proposal, vault, strategy, chat commands</li>
-                      <li className="text-emerald-400/80">✅ XMTP encrypted group chat per syndicate</li>
-                      <li className="text-emerald-400/80">✅ ENS subdomain registration per syndicate</li>
-                      <li className="text-emerald-400/80">✅ 308 tests, deployed on Base Sepolia</li>
+                      <li className="text-emerald-400/80">✅ Syndicate vaults — pool capital, earn yield together</li>
+                      <li className="text-emerald-400/80">✅ Governance — depositors can veto bad strategies before funds move</li>
+                      <li className="text-emerald-400/80">✅ Agent identity — verified onchain profiles for every AI manager</li>
+                      <li className="text-emerald-400/80">✅ CLI tools — create syndicates, propose strategies, manage vaults</li>
+                      <li className="text-emerald-400/80">✅ Encrypted group chat per syndicate</li>
+                      <li className="text-emerald-400/80">✅ Deployed and tested on Base</li>
                     </ul>
                   </div>
                 </div>
@@ -464,23 +463,22 @@ export default async function Home() {
                   </div>
                   <div className="pt-2">
                     <div className="flex items-center gap-3 mb-4">
-                      <h3 className="text-xl font-medium">Phase 2 — Strategy Templates</h3>
+                      <h3 className="text-xl font-medium">Phase 2 — DeFi Strategies</h3>
                       <span className="px-2 py-1 bg-emerald-500/20 text-emerald-400 text-xs font-semibold font-[family-name:var(--font-plus-jakarta)] rounded border border-emerald-500/30">
                         COMPLETE
                       </span>
                     </div>
                     <ul className="space-y-2 text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)]">
-                      <li className="text-emerald-400/80">✅ Composable strategy framework — BaseStrategy + ERC-1167 clones</li>
-                      <li className="text-emerald-400/80">✅ Moonwell Supply — lending yield</li>
-                      <li className="text-emerald-400/80">✅ Aerodrome LP — liquidity provision + gauge staking</li>
-                      <li className="text-emerald-400/80">✅ Venice Inference — stake VVV for private AI</li>
-                      <li className="text-emerald-400/80">✅ wstETH Moonwell — stacked Lido + lending yield</li>
-                      <li className="text-emerald-400/80">✅ Mamo Yield — optimized yield across Moonwell + Morpho</li>
+                      <li className="text-emerald-400/80">✅ Plug-and-play strategy system — agents pick from ready-made templates</li>
+                      <li className="text-emerald-400/80">✅ Lending strategies — earn yield on Moonwell & Morpho</li>
+                      <li className="text-emerald-400/80">✅ Liquidity strategies — provide LP on Aerodrome with auto-staking</li>
+                      <li className="text-emerald-400/80">✅ Staking strategies — Lido wstETH, Venice AI inference</li>
+                      <li className="text-emerald-400/80">✅ Optimized yield — auto-allocate across multiple protocols</li>
                     </ul>
                   </div>
                 </div>
 
-                {/* Phase 3 — Tokenomics */}
+                {/* Phase 3 — Token */}
                 <div className="flex gap-6 md:gap-8">
                   <div className="flex flex-col items-center flex-shrink-0">
                     <div className="w-12 h-12 rounded-full bg-[var(--color-accent)] flex items-center justify-center font-[family-name:var(--font-plus-jakarta)] font-semibold text-black text-sm">
@@ -496,13 +494,11 @@ export default async function Home() {
                       </span>
                     </div>
                     <ul className="space-y-2 text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)]">
-                      <li className="text-emerald-400/80">✅ Revenue-driven tokenomics design (v4) — fee sharing, not emissions</li>
-                      <li className="text-emerald-400/80">✅ Comparative analysis of 10+ ve(3,3) protocols</li>
-                      <li className="text-emerald-400/80">✅ veWOOD fee-sharing mechanism — lock WOOD, earn 60% of protocol fees in USDC</li>
-                      <li>• Token launch — public sale via Fjord LBP</li>
-                      <li>• Deploy tokenomics contracts — VotingEscrow, FeeDistributor, BuybackEngine</li>
-                      <li>• Seed WOOD/WETH Aerodrome Slipstream pool</li>
-                      <li>• Non-transferable bootstrapping incentives (12 months)</li>
+                      <li className="text-emerald-400/80">✅ Tokenomics designed — lock WOOD, earn real protocol revenue in USDC</li>
+                      <li>• Public token launch</li>
+                      <li>• WOOD/WETH liquidity pool on Aerodrome</li>
+                      <li>• Fee-sharing goes live — 60% of protocol fees to WOOD holders</li>
+                      <li>• Automatic buyback-and-lock from protocol revenue</li>
                     </ul>
                   </div>
                 </div>
@@ -516,13 +512,12 @@ export default async function Home() {
                     <div className="w-px bg-white/15 h-16 mt-4"></div>
                   </div>
                   <div className="pt-2">
-                    <h3 className="text-xl font-medium mb-4">Phase 4 — Growth & TVL</h3>
+                    <h3 className="text-xl font-medium mb-4">Phase 4 — Growth</h3>
                     <ul className="space-y-2 text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)]">
-                      <li>• Onboard first 10 syndicates — genesis pool program</li>
-                      <li>• On-chain reputation system via EAS attestations</li>
-                      <li>• Agent framework integrations — Claude Code, OpenClaw</li>
-                      <li>• shareToken/WOOD pools for depositor secondary market exit</li>
-                      <li>• Target: $100K TVL, 5+ active syndicates</li>
+                      <li>• First 10 syndicates with active AI managers</li>
+                      <li>• Onchain reputation — track records for every agent</li>
+                      <li>• Secondary market — trade syndicate shares anytime</li>
+                      <li>• Agent integrations — any AI can manage a syndicate</li>
                     </ul>
                   </div>
                 </div>
@@ -537,11 +532,10 @@ export default async function Home() {
                   <div className="pt-2">
                     <h3 className="text-xl font-medium mb-4">Phase 5 — Scale</h3>
                     <ul className="space-y-2 text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)]">
-                      <li>• Strategy marketplace — publish & discover community strategies</li>
-                      <li>• Cross-chain expansion via LayerZero OFT</li>
-                      <li>• On-chain governance for veWOOD holders (if community demands)</li>
+                      <li>• Strategy marketplace — community-built strategies</li>
+                      <li>• Multi-chain expansion</li>
+                      <li>• Community governance</li>
                       <li>• Full security audit</li>
-                      <li>• Target: $1M+ TVL, self-sustaining fee revenue</li>
                     </ul>
                   </div>
                 </div>
