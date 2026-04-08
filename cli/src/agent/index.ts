@@ -21,6 +21,7 @@ import {
 } from "./scoring.js";
 import type { Signal, ScoringWeights, TradeDecision } from "./scoring.js";
 import { runStrategies } from "./strategies/index.js";
+import { DexScreenerProvider } from "../providers/data/dexscreener.js";
 import type { StrategyContext, StrategyConfig } from "./strategies/index.js";
 
 export type { Signal, ScoringWeights, TradeDecision };
@@ -53,12 +54,14 @@ export class TradingAgent {
   private defillama: DefiLlamaProvider;
   private coingecko: CoinGeckoProvider;
   private sentiment: SentimentProvider;
+  private dexscreener: DexScreenerProvider;
 
   constructor(config: AgentConfig) {
     this.config = config;
     this.defillama = new DefiLlamaProvider();
     this.coingecko = new CoinGeckoProvider();
     this.sentiment = new SentimentProvider();
+    this.dexscreener = new DexScreenerProvider();
   }
 
   /** Analyze a single token — gather all data and score. */
@@ -216,6 +219,20 @@ export class TradingAgent {
 
     // 6. Run strategy modules for additional signals
     try {
+      // Resolve token symbol from CoinGecko for accurate DEX search
+      let tokenSymbol: string | undefined;
+      let dexData: any;
+      try {
+        const coinDetails = await this.coingecko.getCoinDetails(tokenId);
+        tokenSymbol = coinDetails?.symbol?.toUpperCase();
+      } catch {
+        // symbol resolution failed — strategies will fall back to static map
+      }
+
+      // DEX data is now fetched inside dex-flow strategy using KNOWN_TOKENS
+      // for accurate chain-specific pair lookups (address-based for major tokens).
+      // Setting dexData = undefined so the strategy handles it.
+
       const stratCtx: StrategyContext = {
         tokenId,
         candles, // reuse from step 1
@@ -228,6 +245,8 @@ export class TradingAgent {
         marketData: undefined,
         nansenData: undefined,
         messariData: undefined,
+        dexData,
+        tokenSymbol,
       };
 
       const strategySignals = await runStrategies(stratCtx, this.config.strategyConfigs);

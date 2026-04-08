@@ -6,12 +6,13 @@ import type { Provider, ProviderInfo } from "../../types.js";
 
 const BASE_URL = "https://api.coingecko.com/api/v3";
 
-// Shared across all instances to prevent 429s when multiple CoinGeckoProvider exist
+// Shared mutex queue across all instances to prevent 429s.
+// Each request chains onto this promise so only one runs at a time with a 3s gap.
+let requestQueue: Promise<void> = Promise.resolve();
 let sharedLastCallTime = 0;
+const MIN_INTERVAL = 5000; // 5s between calls — free tier needs this
 
 export class CoinGeckoProvider implements Provider {
-  private readonly minInterval = 1500; // 1.5s between calls
-
   info(): ProviderInfo {
     return {
       name: "CoinGecko",
@@ -21,21 +22,34 @@ export class CoinGeckoProvider implements Provider {
     };
   }
 
-  /** Throttle: wait until 1.5s has passed since last call (shared across all instances). */
-  private async throttle(): Promise<void> {
-    const now = Date.now();
-    const elapsed = now - sharedLastCallTime;
-    if (elapsed < this.minInterval) {
-      await new Promise((resolve) => setTimeout(resolve, this.minInterval - elapsed));
-    }
-    sharedLastCallTime = Date.now();
-  }
-
-  private async fetchJson(url: string): Promise<any> {
-    await this.throttle();
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`CoinGecko error: ${res.status} ${res.statusText} — ${url}`);
-    return res.json();
+  /**
+   * Serialised request method — every CoinGecko call goes through here.
+   * Uses a shared promise chain (mutex) so concurrent calls are queued,
+   * each waiting 3s after the previous one completes.
+   */
+  private fetchJson(url: string): Promise<any> {
+    const job = requestQueue.then(async () => {
+      const now = Date.now();
+      const elapsed = now - sharedLastCallTime;
+      if (elapsed < MIN_INTERVAL) {
+        await new Promise((resolve) => setTimeout(resolve, MIN_INTERVAL - elapsed));
+      }
+      sharedLastCallTime = Date.now();
+      const res = await fetch(url);
+      if (res.status === 429) {
+        // Rate limited — wait 30s and retry once
+        await new Promise((resolve) => setTimeout(resolve, 30_000));
+        sharedLastCallTime = Date.now();
+        const retry = await fetch(url);
+        if (!retry.ok) throw new Error(`CoinGecko error: ${retry.status} ${retry.statusText} — ${url}`);
+        return retry.json();
+      }
+      if (!res.ok) throw new Error(`CoinGecko error: ${res.status} ${res.statusText} — ${url}`);
+      return res.json();
+    });
+    // Chain the next request after this one settles (success or failure)
+    requestQueue = job.then(() => {}, () => {});
+    return job;
   }
 
   /**

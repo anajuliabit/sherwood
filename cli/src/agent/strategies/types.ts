@@ -23,6 +23,8 @@ export interface StrategyContext {
   marketData?: any;     // from CoinGecko
   nansenData?: any;     // from x402 research (Nansen)
   messariData?: any;    // from x402 research (Messari)
+  dexData?: any;        // from DEXScreener
+  tokenSymbol?: string; // resolved symbol (e.g. "ETH" for "ethereum")
 }
 
 export interface Strategy {

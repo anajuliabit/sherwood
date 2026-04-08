@@ -13,6 +13,93 @@ import type { Strategy, StrategyContext } from './types.js';
 import { DexScreenerProvider } from '../../providers/data/dexscreener.js';
 import type { DexPair } from '../../providers/data/dexscreener.js';
 
+/** Well-known CoinGecko ID → ticker symbol mapping. */
+const TOKEN_SYMBOL_MAP: Record<string, string> = {
+  ethereum: 'ETH',
+  bitcoin: 'BTC',
+  solana: 'SOL',
+  uniswap: 'UNI',
+  chainlink: 'LINK',
+  aave: 'AAVE',
+  ripple: 'XRP',
+  cardano: 'ADA',
+  polkadot: 'DOT',
+  avalanche: 'AVAX',
+  polygon: 'MATIC',
+  arbitrum: 'ARB',
+  optimism: 'OP',
+  litecoin: 'LTC',
+  dogecoin: 'DOGE',
+  'shiba-inu': 'SHIB',
+  pepe: 'PEPE',
+  celestia: 'TIA',
+  sui: 'SUI',
+  aptos: 'APT',
+  sei: 'SEI',
+  injective: 'INJ',
+  jupiter: 'JUP',
+  render: 'RENDER',
+  maker: 'MKR',
+  compound: 'COMP',
+  lido: 'LDO',
+  'wrapped-bitcoin': 'WBTC',
+  'staked-ether': 'STETH',
+};
+
+/** Allowed chains — only EVM mainnet + major L2s. */
+const ALLOWED_CHAINS = new Set([
+  'ethereum', 'base', 'arbitrum', 'optimism', 'polygon',
+]);
+
+const MIN_LIQUIDITY_USD = 100_000;
+
+/** Well-known token addresses so we can search by address instead of name. */
+const KNOWN_TOKENS: Record<string, { address: string; chain: string }> = {
+  ETH: { address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', chain: 'ethereum' },
+  BTC: { address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', chain: 'ethereum' },
+  WBTC: { address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', chain: 'ethereum' },
+  USDC: { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', chain: 'ethereum' },
+  USDT: { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', chain: 'ethereum' },
+  UNI: { address: '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984', chain: 'ethereum' },
+  AAVE: { address: '0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9', chain: 'ethereum' },
+  LINK: { address: '0x514910771AF9Ca656af840dff83E8264EcF986CA', chain: 'ethereum' },
+  SOL: { address: '0xD31a59c85aE9D8edEFec411186437e05Ce3a1d82', chain: 'ethereum' },
+  MKR: { address: '0x9f8F72aA9304c8B593d555F12eF6589cC3A579A2', chain: 'ethereum' },
+  CRV: { address: '0xD533a949740bb3306d119CC777fa900bA034cd52', chain: 'ethereum' },
+  LDO: { address: '0x5A98FcBEA516Cf06857215779Fd812CA3beF1B32', chain: 'ethereum' },
+  PENDLE: { address: '0x808507121B80c02388fAd14726482e061B8da827', chain: 'ethereum' },
+  ARB: { address: '0xB50721BCf8d664c30412Cfbc6cf7a15145234ad1', chain: 'arbitrum' },
+  OP: { address: '0x4200000000000000000000000000000000000042', chain: 'optimism' },
+};
+
+/**
+ * Resolve a CoinGecko tokenId to a ticker symbol for DEXScreener search.
+ */
+function resolveSymbol(tokenId: string, ctx: StrategyContext): string {
+  if (TOKEN_SYMBOL_MAP[tokenId]) return TOKEN_SYMBOL_MAP[tokenId]!;
+  if (ctx.tokenSymbol) return ctx.tokenSymbol.toUpperCase();
+  return tokenId.toUpperCase();
+}
+
+/**
+ * Filter and rank DEXScreener pairs:
+ * 1. ONLY allowed EVM chains
+ * 2. Require liquidity >= $100K
+ * 3. Sort by liquidity descending
+ */
+function pickBestPair(pairs: DexPair[]): DexPair | undefined {
+  const viable = pairs
+    .filter((p) => ALLOWED_CHAINS.has(p.chainId))
+    .filter((p) => (p.liquidity?.usd ?? 0) >= MIN_LIQUIDITY_USD)
+    .filter((p) => p.volume?.h24 > 0 && p.txns);
+
+  if (viable.length === 0) return undefined;
+
+  // Sort by liquidity descending
+  viable.sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0));
+  return viable[0];
+}
+
 function clamp(v: number, min: number = -1, max: number = 1): number {
   return Math.max(min, Math.min(max, v));
 }
@@ -32,7 +119,20 @@ export class DexFlowStrategy implements Strategy {
     // Try to find DEX pairs for the token
     let pairs: DexPair[] = [];
     try {
-      pairs = await this.dex.searchPairs(ctx.tokenId);
+      if (ctx.dexData && Array.isArray(ctx.dexData) && ctx.dexData.length > 0) {
+        pairs = ctx.dexData as DexPair[];
+      } else {
+        const symbol = resolveSymbol(ctx.tokenId, ctx);
+        const known = KNOWN_TOKENS[symbol];
+        if (known) {
+          // Use address-based lookup for known tokens — much more precise
+          const allPairs = await this.dex.getTokenPairs(known.address);
+          pairs = allPairs.filter((p) => p.chainId === known.chain);
+        } else {
+          // Fallback: search by symbol
+          pairs = await this.dex.searchPairs(symbol);
+        }
+      }
     } catch (err) {
       return {
         name: this.name,
@@ -53,10 +153,8 @@ export class DexFlowStrategy implements Strategy {
       };
     }
 
-    // Use the highest-volume pair
-    const pair = pairs
-      .filter((p) => p.volume?.h24 > 0 && p.txns)
-      .sort((a, b) => (b.volume?.h24 ?? 0) - (a.volume?.h24 ?? 0))[0];
+    // Pick best pair: filter by liquidity, prefer EVM chains, sort by liquidity
+    const pair = pickBestPair(pairs);
 
     if (!pair || !pair.txns) {
       return {
