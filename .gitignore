@@ -30,3 +30,13 @@ Thumbs.db
 *.swp
 mamo-contracts-ref/
 market-maker/package-lock.json
+
+# Foundry broadcast artifacts
+contracts/broadcast/
+
+# Python
+__pycache__/
+*.pyc
+
+# Stray files
+=

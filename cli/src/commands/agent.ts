@@ -5,6 +5,9 @@
 
 import { Command } from "commander";
 import chalk from "chalk";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import ora from "ora";
 import { TradingAgent } from "../agent/index.js";
 import type { AgentConfig, TokenAnalysis } from "../agent/index.js";
@@ -341,6 +344,21 @@ export function registerAgentCommands(program: Command): void {
           if (!isNaN(numVal)) {
             (riskConfig as Record<string, unknown>)[key] = numVal;
             console.log(chalk.green(`  Set ${key} = ${numVal}`));
+
+            // Persist to disk
+            const configDir = join(homedir(), '.sherwood', 'agent');
+            const configPath = join(configDir, 'config.json');
+            let existingConfig: Record<string, unknown> = {};
+            try {
+              const data = await readFile(configPath, 'utf-8');
+              existingConfig = JSON.parse(data);
+            } catch {
+              // No existing config file
+            }
+            existingConfig[key] = numVal;
+            await mkdir(configDir, { recursive: true });
+            await writeFile(configPath, JSON.stringify(existingConfig, null, 2), 'utf-8');
+            console.log(chalk.dim(`  Saved to ${configPath}`));
           } else {
             console.log(chalk.red(`  Invalid value: ${value}`));
           }

@@ -11,6 +11,9 @@ export interface PortfolioState {
   dailyPnl: number;
   weeklyPnl: number;
   monthlyPnl: number;
+  lastDailyReset?: number;
+  lastWeeklyReset?: number;
+  lastMonthlyReset?: number;
 }
 
 export interface Position {
@@ -39,6 +42,7 @@ export interface RiskConfig {
   weeklyLossLimit: number;
   monthlyLossLimit: number;
   maxSlippage: Record<string, number>;
+  riskPerTrade: number;
 }
 
 export const DEFAULT_RISK_CONFIG: RiskConfig = {
@@ -52,6 +56,7 @@ export const DEFAULT_RISK_CONFIG: RiskConfig = {
   weeklyLossLimit: 0.10,
   monthlyLossLimit: 0.15,
   maxSlippage: { large: 0.005, mid: 0.015, small: 0.03 },
+  riskPerTrade: 0.02,
 };
 
 const DEFAULT_PORTFOLIO: PortfolioState = {
@@ -131,6 +136,30 @@ const existing = this.portfolio.positions.find((p) => p.tokenId === token);
       return { allowed: false, reason: drawdown.message };
     }
 
+    // Check correlated exposure by token category
+    const TOKEN_CATEGORIES: Record<string, string> = {
+      bitcoin: 'L1', ethereum: 'L1', solana: 'L1', avalanche: 'L1', cardano: 'L1',
+      polkadot: 'L1', near: 'L1', cosmos: 'L1', sui: 'L1', aptos: 'L1',
+      uniswap: 'DeFi', aave: 'DeFi', maker: 'DeFi', compound: 'DeFi', curve: 'DeFi',
+      lido: 'DeFi', sushi: 'DeFi', pancakeswap: 'DeFi', jupiter: 'DeFi',
+      arbitrum: 'L2', optimism: 'L2', polygon: 'L2', 'starknet': 'L2', base: 'L2',
+      'zksync': 'L2', mantle: 'L2',
+    };
+
+    const tokenCategory = TOKEN_CATEGORIES[token];
+    if (tokenCategory && portfolioValue > 0) {
+      const correlatedExposure = this.portfolio.positions
+        .filter((p) => TOKEN_CATEGORIES[p.tokenId] === tokenCategory)
+        .reduce((sum, p) => sum + p.quantity * p.currentPrice, 0);
+      const newExposure = (correlatedExposure + sizeUsd) / portfolioValue;
+      if (newExposure > this.config.maxCorrelatedExposure) {
+        return {
+          allowed: false,
+          reason: `Correlated exposure for ${tokenCategory} would be ${(newExposure * 100).toFixed(1)}% (limit: ${(this.config.maxCorrelatedExposure * 100).toFixed(0)}%)`,
+        };
+      }
+    }
+
     return { allowed: true };
   }
 
@@ -146,7 +175,7 @@ const existing = this.portfolio.positions.find((p) => p.tokenId === token);
       return { quantity: 0, sizeUsd: 0, riskUsd: 0 };
     }
 
-    const riskPct = maxRiskPercent ?? this.config.maxSinglePosition;
+    const riskPct = maxRiskPercent ?? this.config.riskPerTrade;
     const riskUsd = portfolioValue * riskPct;
     const riskPerUnit = Math.abs(entryPrice - stopLossPrice);
 

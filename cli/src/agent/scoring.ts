@@ -10,6 +10,7 @@ export interface Signal {
   confidence: number;  // 0.0 to 1.0
   source: string;
   details: string;
+  _weightOverride?: number;
 }
 
 export interface ScoringWeights {
@@ -385,7 +386,7 @@ export function computeTradeDecision(
   let weightedConfidence = 0;
 
   for (const signal of signals) {
-    const signalWeight = weightMap[signal.name] ?? 0.1;
+    const signalWeight = signal._weightOverride ?? weightMap[signal.name] ?? 0.1;
     weightedSum += signal.value * signalWeight;
     weightedConfidence += signal.confidence * signalWeight;
     totalWeight += signalWeight;

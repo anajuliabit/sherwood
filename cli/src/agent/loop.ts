@@ -10,7 +10,7 @@ import { TradingAgent } from './index.js';
 import type { AgentConfig } from './index.js';
 import { TradeExecutor } from './executor.js';
 import type { ExecutionConfig } from './executor.js';
-import { PortfolioTracker } from './portfolio.js';
+import { PortfolioTracker, resetPnlCounters } from './portfolio.js';
 import { RiskManager, DEFAULT_RISK_CONFIG } from './risk.js';
 import type { RiskConfig } from './risk.js';
 import { CoinGeckoProvider } from '../providers/data/coingecko.js';
@@ -106,8 +106,14 @@ export class AgentLoop {
 
     // 1. Load portfolio and check drawdown limits
     const state = await this.portfolio.load();
-    this.riskManager.updatePortfolio(state);
 
+    // Reset PnL counters if time boundaries crossed
+    const resetState = resetPnlCounters(state);
+    if (resetState.dailyPnl !== state.dailyPnl || resetState.weeklyPnl !== state.weeklyPnl || resetState.monthlyPnl !== state.monthlyPnl) {
+      await this.portfolio.save(resetState);
+    }
+
+    this.riskManager.updatePortfolio(resetState);
     const drawdown = this.riskManager.isDrawdownLimitHit();
     if (drawdown.paused) {
       console.log(chalk.red(`  ⚠ Trading paused: ${drawdown.message}`));

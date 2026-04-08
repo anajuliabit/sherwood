@@ -46,7 +46,39 @@ export class TradeExecutor {
     error?: string;
     dryRun: boolean;
   }> {
-    // Only execute on BUY or STRONG_BUY
+    // Handle SELL/STRONG_SELL by closing existing long positions
+    if (decision.action === 'SELL' || decision.action === 'STRONG_SELL') {
+      const sellState = await this.portfolio.load();
+      const existing = sellState.positions.find((p) => p.tokenId === tokenId);
+      if (!existing) {
+        return {
+          success: false,
+          error: `No open position in ${tokenId} to sell`,
+          dryRun: this.config.dryRun,
+        };
+      }
+
+      try {
+        const reason = decision.action === 'STRONG_SELL' ? 'Strong sell signal' : 'Sell signal';
+        if (this.config.dryRun) {
+          console.error(chalk.cyan(`[DRY RUN] Paper trade: SELL ${existing.quantity.toFixed(6)} ${tokenId} @ $${currentPrice.toFixed(4)}`));
+        }
+        const closeResult = await this.portfolio.closePosition(tokenId, currentPrice, reason);
+        return {
+          success: true,
+          position: { ...existing, currentPrice, pnlUsd: closeResult.pnl, pnlPercent: closeResult.pnlPercent },
+          dryRun: this.config.dryRun,
+        };
+      } catch (err) {
+        return {
+          success: false,
+          error: `Failed to close position: ${(err as Error).message}`,
+          dryRun: this.config.dryRun,
+        };
+      }
+    }
+
+    // Only execute buys on BUY or STRONG_BUY; HOLD does nothing
     if (decision.action !== 'BUY' && decision.action !== 'STRONG_BUY') {
       return {
         success: false,

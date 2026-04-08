@@ -145,11 +145,16 @@ export class TradingAgent {
       signals.push(scoreFundamental({}));
     }
 
+    // Shared research data — captured in steps 4 & 5, reused in step 6 strategies
+    let nansenData: any = undefined;
+    let messariData: any = undefined;
+
     // 4. Smart-money & on-chain data (via Nansen x402 when enabled)
     if (this.config.useX402) {
       try {
         const nansen = getResearchProvider("nansen");
         const smResult = await nansen.query({ type: "smart-money", target: tokenId });
+        nansenData = smResult.data;
         const flows = smResult.data.flows as Array<Record<string, unknown>> | undefined;
         if (flows && flows.length > 0) {
           // Interpret net flow: negative = leaving exchanges = bullish
@@ -175,6 +180,7 @@ export class TradingAgent {
       try {
         const messari = getResearchProvider("messari");
         const tokenResult = await messari.query({ type: "token", target: tokenId });
+        messariData = tokenResult.data;
         const d = tokenResult.data as Record<string, unknown>;
         const metrics = d.metrics as Record<string, unknown> | undefined;
         const profile = d.profile as Record<string, unknown> | undefined;
@@ -218,8 +224,6 @@ export class TradingAgent {
     }
 
     // 6. Run strategy modules for additional signals
-    let nansenData: any = undefined;
-    let messariData: any = undefined;
     let marketData: any = undefined;
 
     try {
@@ -234,23 +238,8 @@ export class TradingAgent {
         // symbol resolution failed — strategies will fall back to static map
       }
 
-      // Re-fetch research data for strategies if x402 is enabled
       if (this.config.useX402) {
-        try {
-          const nansen = getResearchProvider("nansen");
-          const smResult = await nansen.query({ type: "smart-money", target: tokenId });
-          nansenData = smResult.data;
-        } catch {
-          // Nansen data optional for strategies
-        }
-
-        try {
-          const messari = getResearchProvider("messari");
-          const tokenResult = await messari.query({ type: "token", target: tokenId });
-          messariData = tokenResult.data;
-        } catch {
-          // Messari data optional for strategies
-        }
+        // Reuse research data already fetched in steps 4 & 5 above — no duplicate x402 calls
       }
 
       const stratCtx: StrategyContext = {

@@ -1,23 +1,15 @@
 /**
- * Sentiment data provider — Fear & Greed index and z-score utilities.
+ * Sentiment data provider — delegates to FearGreedProvider for API access,
+ * adds z-score utilities and Provider interface compliance.
  */
 
 import type { Provider, ProviderInfo } from "../../types.js";
+import { FearGreedProvider, type FearGreedEntry } from "./feargreed.js";
 
-export interface FearAndGreedData {
-  value: number;
-  classification: string;
-  timestamp: string;
-}
+/** @deprecated Use FearGreedEntry from feargreed.ts instead. */
+export type FearAndGreedData = FearGreedEntry;
 
-export interface FearAndGreedResponse {
-  name: string;
-  data: Array<{
-    value: string;
-    value_classification: string;
-    timestamp: string;
-  }>;
-}
+const fearGreed = new FearGreedProvider();
 
 export class SentimentProvider implements Provider {
   info(): ProviderInfo {
@@ -29,27 +21,14 @@ export class SentimentProvider implements Provider {
     };
   }
 
-  /** Fetch last 30 days of Fear & Greed index data. */
-  async getFearAndGreed(): Promise<FearAndGreedData[]> {
-    try {
-      const res = await fetch("https://api.alternative.me/fng/?limit=30");
-      if (!res.ok) throw new Error(`Fear & Greed API error: ${res.status} ${res.statusText}`);
-      const json = (await res.json()) as FearAndGreedResponse;
-      return json.data.map((d) => ({
-        value: Number(d.value),
-        classification: d.value_classification,
-        timestamp: d.timestamp,
-      }));
-    } catch (err) {
-      throw new Error(`Failed to fetch Fear & Greed: ${(err as Error).message}`);
-    }
+  /** Fetch last 30 days of Fear & Greed index data (delegates to FearGreedProvider). */
+  async getFearAndGreed(): Promise<FearGreedEntry[]> {
+    return fearGreed.getHistory(30);
   }
 
-  /** Get just the latest Fear & Greed value. */
-  async getFearAndGreedCurrent(): Promise<FearAndGreedData> {
-    const data = await this.getFearAndGreed();
-    if (!data.length) throw new Error("No Fear & Greed data available");
-    return data[0]!;
+  /** Get just the latest Fear & Greed value (delegates to FearGreedProvider). */
+  async getFearAndGreedCurrent(): Promise<FearGreedEntry> {
+    return fearGreed.getCurrent();
   }
 
   /**

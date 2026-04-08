@@ -8,6 +8,45 @@ import { homedir } from 'node:os';
 import chalk from 'chalk';
 import type { Position, PortfolioState } from './risk.js';
 
+/** Check and reset PnL counters based on time boundaries */
+export function resetPnlCounters(state: PortfolioState): PortfolioState {
+  const now = Date.now();
+  const updated = { ...state };
+
+  // Reset daily PnL at midnight UTC
+  const todayMidnight = new Date();
+  todayMidnight.setUTCHours(0, 0, 0, 0);
+  const todayMs = todayMidnight.getTime();
+  if (!updated.lastDailyReset || updated.lastDailyReset < todayMs) {
+    updated.dailyPnl = 0;
+    updated.lastDailyReset = now;
+  }
+
+  // Reset weekly PnL on Monday midnight UTC
+  const dayOfWeek = new Date(now).getUTCDay(); // 0=Sun, 1=Mon
+  const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  const mondayMidnight = new Date();
+  mondayMidnight.setUTCHours(0, 0, 0, 0);
+  mondayMidnight.setUTCDate(mondayMidnight.getUTCDate() - daysSinceMonday);
+  const mondayMs = mondayMidnight.getTime();
+  if (!updated.lastWeeklyReset || updated.lastWeeklyReset < mondayMs) {
+    updated.weeklyPnl = 0;
+    updated.lastWeeklyReset = now;
+  }
+
+  // Reset monthly PnL on 1st of month midnight UTC
+  const firstOfMonth = new Date();
+  firstOfMonth.setUTCHours(0, 0, 0, 0);
+  firstOfMonth.setUTCDate(1);
+  const firstMs = firstOfMonth.getTime();
+  if (!updated.lastMonthlyReset || updated.lastMonthlyReset < firstMs) {
+    updated.monthlyPnl = 0;
+    updated.lastMonthlyReset = now;
+  }
+
+  return updated;
+}
+
 export interface TradeRecord {
   tokenId: string;
   symbol: string;
