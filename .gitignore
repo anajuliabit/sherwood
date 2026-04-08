@@ -29,3 +29,4 @@ Thumbs.db
 .vscode/
 *.swp
 mamo-contracts-ref/
+market-maker/package-lock.json
