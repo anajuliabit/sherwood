@@ -40,6 +40,29 @@ export const robinhoodTestnet = defineChain({
   testnet: true,
 });
 
+// ── HyperEVM chain definition ────────────────────────────
+
+export const hyperevm = defineChain({
+  id: 999,
+  name: "HyperEVM",
+  nativeCurrency: { name: "Ethereum", symbol: "ETH", decimals: 18 },
+  rpcUrls: {
+    default: { http: ["https://rpc.hyperliquid.xyz/evm"] },
+  },
+  blockExplorers: {
+    default: {
+      name: "Routescan",
+      url: "https://explorer.hyperliquid.xyz",
+    },
+  },
+  contracts: {
+    multicall3: {
+      address: "0xcA11bde05977b3631167028862bE2a173976CA11",
+    },
+  },
+  testnet: false,
+});
+
 // ── Per-chain RPC ────────────────────────────────────────
 
 const RPC_CONFIG: Record<number, { envSuffix: string; fallback: string }> = {
@@ -48,6 +71,10 @@ const RPC_CONFIG: Record<number, { envSuffix: string; fallback: string }> = {
   46630: {
     envSuffix: "ROBINHOOD_TESTNET",
     fallback: "https://rpc.testnet.chain.robinhood.com",
+  },
+  999: {
+    envSuffix: "HYPEREVM",
+    fallback: "https://rpc.hyperliquid.xyz/evm",
   },
 };
 
@@ -147,6 +174,24 @@ const ROBINHOOD_TESTNET_ADDRESSES: ChainAddresses = {
   easExplorer: "",
 };
 
+const HYPEREVM_ADDRESSES: ChainAddresses = {
+  factory: "0x4085EEa1E6d3D20E84D8Ae14964FAb8b899DA40a",
+  usdc: ZERO, // TODO: set after USDC availability on HyperEVM
+  l2Registry: ZERO,
+  identityRegistry: ZERO,
+  eas: ZERO,
+  schemaRegistry: ZERO,
+  easSchemas: {
+    joinRequest: ZERO_BYTES32,
+    agentApproved: ZERO_BYTES32,
+    veniceInference: ZERO_BYTES32,
+    tradeExecuted: ZERO_BYTES32,
+    x402Research: ZERO_BYTES32,
+  },
+  blockExplorer: "https://explorer.hyperliquid.xyz",
+  easExplorer: "",
+};
+
 // ── Chain registry ───────────────────────────────────────
 
 export interface ChainEntry {
@@ -172,6 +217,11 @@ const _ALL_CHAINS: Record<number, ChainEntry> = {
     addresses: BASE_ADDRESSES,
     subgraphUrl:
       "https://api.studio.thegraph.com/query/18207/sherwood/version/latest",
+  },
+  999: {
+    chain: hyperevm,
+    addresses: HYPEREVM_ADDRESSES,
+    subgraphUrl: null,
   },
 };
 

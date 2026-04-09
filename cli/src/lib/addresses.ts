@@ -228,7 +228,10 @@ const ROBINHOOD_TESTNET_SHERWOOD = {
   GOVERNOR: "0xd882056ba6b0aEd8908c541884B327121E2f2C9C" as Address,
 } as const;
 
-const HYPEREVM_SHERWOOD = { FACTORY: ZERO, GOVERNOR: ZERO } as const;
+const HYPEREVM_SHERWOOD = {
+  FACTORY: "0x4085EEa1E6d3D20E84D8Ae14964FAb8b899DA40a" as Address,
+  GOVERNOR: "0x7B4a2f3480FE101f88b2e3547A1bCf3eaaDE46bc" as Address,
+} as const;
 
 // ── Venice (VVV governance + sVVV staking + DIEM compute) ──
 
