@@ -4,6 +4,7 @@
 
 import chalk from 'chalk';
 import { CoinGeckoProvider } from '../providers/data/coingecko.js';
+import { SentimentProvider } from '../providers/data/sentiment.js';
 import { getLatestSignals } from './technical.js';
 import type { Candle } from './technical.js';
 import { runStrategies } from './strategies/index.js';
@@ -18,6 +19,7 @@ export interface BacktestConfig {
   initialCapital: number;
   strategies: string[]; // strategy names to test
   cycle: '1h' | '4h' | '1d';
+  verbose?: boolean;   // show detailed decision logs
 }
 
 export interface BacktestTrade {
@@ -70,13 +72,22 @@ export interface WalkForwardResult {
   overfitRatio: number;    // train sharpe / test sharpe
 }
 
+// Strategies that can work with candles-only data in backtest mode
+const CANDLE_BASED_STRATEGIES = [
+  'breakoutOnChain',
+  'meanReversion',
+  'multiTimeframe',
+];
+
 export class Backtester {
   private config: BacktestConfig;
   private cg: CoinGeckoProvider;
+  private sentimentProvider: SentimentProvider;
 
   constructor(config: BacktestConfig) {
     this.config = config;
     this.cg = new CoinGeckoProvider();
+    this.sentimentProvider = new SentimentProvider();
   }
 
   /** Run backtest using historical data from CoinGecko. */
@@ -140,6 +151,24 @@ export class Backtester {
       throw new Error(`Insufficient data: only ${allCandles.length} candles in date range (need 30+)`);
     }
 
+    // 1.5. Fetch Fear & Greed historical data for sentiment-contrarian strategy
+    let fearAndGreedData: Record<string, number> = {};
+    try {
+      const fgData = await this.sentimentProvider.getFearAndGreed();
+      for (const entry of fgData) {
+        // Convert timestamp to date string and store
+        const date = new Date(entry.timestamp * 1000).toISOString().split('T')[0]!;
+        fearAndGreedData[date] = entry.value;
+      }
+      if (this.config.verbose && Object.keys(fearAndGreedData).length > 0) {
+        console.log(chalk.dim(`  Loaded ${Object.keys(fearAndGreedData).length} Fear & Greed historical data points`));
+      }
+    } catch (error) {
+      if (this.config.verbose) {
+        console.log(chalk.yellow(`  Warning: Could not fetch Fear & Greed data: ${(error as Error).message}`));
+      }
+    }
+
     // 2. Determine step size based on cycle
     const stepSize = this.config.cycle === '1h' ? 1 : this.config.cycle === '4h' ? 4 : 24;
     // CoinGecko OHLC for 90+ days gives daily candles, so step = 1 candle for '1d'
@@ -153,6 +182,21 @@ export class Backtester {
     const returns: number[] = [];
 
     const windowSize = 30; // min candles needed for indicators
+
+    // Show strategy filtering info
+    if (this.config.verbose) {
+      if (this.config.strategies.length > 0) {
+        console.log(chalk.dim(`  Using user-specified strategies: ${this.config.strategies.join(', ')}`));
+      } else {
+        const availableStrategies = [...CANDLE_BASED_STRATEGIES];
+        if (Object.keys(fearAndGreedData).length > 0) {
+          availableStrategies.push('sentimentContrarian');
+        }
+        console.log(chalk.dim(`  Using candle-based strategies: ${availableStrategies.join(', ')}`));
+        console.log(chalk.dim(`  Filtered out external data strategies to prevent zero-signal noise`));
+      }
+      console.log();
+    }
 
     for (let i = windowSize; i < allCandles.length; i += step) {
       // Use historical data only (excluding current candle to avoid look-ahead bias)
@@ -175,21 +219,51 @@ export class Backtester {
       try {
         const technicals = getLatestSignals(windowCandles);
 
+        // Add Fear & Greed data for the current date if available
+        let fearAndGreed: { value: number; classification: string } | undefined;
+        const fgValue = fearAndGreedData[currentDate];
+        if (fgValue !== undefined) {
+          const classification = fgValue < 25 ? 'Extreme Fear' :
+                                 fgValue < 40 ? 'Fear' :
+                                 fgValue < 60 ? 'Neutral' :
+                                 fgValue < 75 ? 'Greed' : 'Extreme Greed';
+          fearAndGreed = { value: fgValue, classification };
+        }
+
         const ctx: StrategyContext = {
           tokenId: this.config.tokenId,
           candles: windowCandles,
           technicals,
+          fearAndGreed,
         };
 
-        // Run strategies (filtered by config)
+        // Run strategies — filter to candle-based only for backtest
         const signals = await runStrategies(ctx);
-        const filtered = this.config.strategies.length > 0
-          ? signals.filter((s) => this.config.strategies.some(
-              (name) => s.name.toLowerCase().includes(name.toLowerCase()),
-            ))
-          : signals;
+
+        // Filter strategies: if user specified strategies, honor their choice
+        // Otherwise, filter to candle-based strategies only
+        let filtered = signals;
+        if (this.config.strategies.length > 0) {
+          // User specified strategies — use their selection
+          filtered = signals.filter((s) => this.config.strategies.some(
+            (name) => s.name.toLowerCase().includes(name.toLowerCase()),
+          ));
+        } else {
+          // No user selection — filter to candle-based strategies only
+          filtered = signals.filter((s) => CANDLE_BASED_STRATEGIES.includes(s.name) ||
+                                          (fearAndGreed && s.name === 'sentimentContrarian'));
+        }
 
         decision = computeTradeDecision(filtered.length > 0 ? filtered : signals);
+
+        // Verbose logging
+        if (this.config.verbose) {
+          const activeSignals = filtered.filter(s => Math.abs(s.value) > 0.01);
+          const signalSummary = activeSignals.map(s =>
+            `${s.name}:${s.value >= 0 ? '+' : ''}${s.value.toFixed(2)}`
+          ).join(' ');
+          console.log(`${currentDate}: score=${decision.score.toFixed(2)} ${decision.action} (${signalSummary || 'no signals'})`);
+        }
       } catch {
         continue; // skip candle if analysis fails
       }
@@ -321,6 +395,7 @@ export class Backtester {
           initialCapital: config.capital,
           strategies: config.strategies,
           cycle: '1d',
+          verbose: false, // Don't spam verbose output during walk-forward
         });
         const trainResult = await trainBacktester.run();
 
@@ -332,6 +407,7 @@ export class Backtester {
           initialCapital: config.capital,
           strategies: config.strategies,
           cycle: '1d',
+          verbose: false, // Don't spam verbose output during walk-forward
         });
         const testResult = await testBacktester.run();
 

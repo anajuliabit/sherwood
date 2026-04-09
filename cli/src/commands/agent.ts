@@ -530,7 +530,8 @@ export function registerAgentCommands(program: Command): void {
     .option("--walk-forward", "Enable walk-forward optimization")
     .option("--train <days>", "Training window in days for walk-forward", "90")
     .option("--test <days>", "Test window in days for walk-forward", "30")
-    .action(async (token: string, options: { from: string; to: string; strategies: string; capital: string; cycle: string; walkForward?: boolean; train: string; test: string }) => {
+    .option("--verbose", "Show detailed decision logs for each candle")
+    .action(async (token: string, options: { from: string; to: string; strategies: string; capital: string; cycle: string; walkForward?: boolean; train: string; test: string; verbose?: boolean }) => {
       const capital = parseFloat(options.capital);
       const strategies = options.strategies ? options.strategies.split(",").map((s) => s.trim()) : [];
 
@@ -561,6 +562,7 @@ export function registerAgentCommands(program: Command): void {
             initialCapital: capital,
             strategies,
             cycle: (options.cycle as BacktestConfig["cycle"]) || "1d",
+            verbose: options.verbose,
           });
           const result = await backtester.walkForwardTest(walkConfig);
           spinner.stop();
@@ -578,6 +580,7 @@ export function registerAgentCommands(program: Command): void {
           initialCapital: capital,
           strategies,
           cycle: (options.cycle as BacktestConfig["cycle"]) || "1d",
+          verbose: options.verbose,
         };
 
         const spinner = ora(`Backtesting ${token} from ${config.startDate} to ${config.endDate}...`).start();
