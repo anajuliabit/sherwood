@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import ora from "ora";
 import { TradingAgent } from "../agent/index.js";
-import type { AgentConfig, TokenAnalysis } from "../agent/index.js";
+import type { AgentConfig, TokenAnalysis, Alert } from "../agent/index.js";
 import { getLatestSignals } from "../agent/technical.js";
 import type { Candle } from "../agent/technical.js";
 import { CoinGeckoProvider } from "../providers/data/coingecko.js";
@@ -29,7 +29,7 @@ import { RiskManager, DEFAULT_RISK_CONFIG } from "../agent/risk.js";
 import type { RiskConfig } from "../agent/risk.js";
 import { Reporter } from "../agent/reporter.js";
 import { Backtester } from "../agent/backtest.js";
-import type { BacktestConfig } from "../agent/backtest.js";
+import type { BacktestConfig, WalkForwardConfig } from "../agent/backtest.js";
 
 const DEFAULT_TOKENS = ["ethereum", "bitcoin", "solana", "aave", "uniswap"];
 
@@ -62,18 +62,20 @@ export function registerAgentCommands(program: Command): void {
       const spinner = ora("Analyzing tokens...").start();
 
       try {
-        const results: TokenAnalysis[] = [];
-        for (const token of tokenList) {
-          spinner.text = `Analyzing ${token}...`;
-          const result = await tradingAgent.analyzeToken(token);
-          results.push(result);
-        }
+        spinner.text = "Analyzing tokens and checking for alerts...";
+        const { analyses: results, alerts } = await tradingAgent.analyzeAllWithAlerts();
         spinner.stop();
 
         if (options.json) {
           console.log(JSON.stringify(results.map((r) => ({ token: r.token, decision: r.decision })), null, 2));
         } else {
           console.log(tradingAgent.formatAnalysis(results));
+
+          // Show alerts if any
+          if (alerts.length > 0) {
+            console.log(chalk.bold("\n" + tradingAgent.formatAlerts(alerts)));
+            console.log();
+          }
 
           // Detailed signal breakdown
           for (const r of results) {
@@ -487,25 +489,129 @@ export function registerAgentCommands(program: Command): void {
     .option("--strategies <list>", "Comma-separated strategy names", "")
     .option("--capital <amount>", "Initial capital in USD", "10000")
     .option("--cycle <interval>", "Candle interval (1h, 4h, 1d)", "1d")
-    .action(async (token: string, options: { from: string; to: string; strategies: string; capital: string; cycle: string }) => {
-      const config: BacktestConfig = {
-        tokenId: token,
-        startDate: options.from,
-        endDate: options.to,
-        initialCapital: parseFloat(options.capital),
-        strategies: options.strategies ? options.strategies.split(",").map((s) => s.trim()) : [],
-        cycle: (options.cycle as BacktestConfig["cycle"]) || "1d",
-      };
+    .option("--walk-forward", "Enable walk-forward optimization")
+    .option("--train <days>", "Training window in days for walk-forward", "90")
+    .option("--test <days>", "Test window in days for walk-forward", "30")
+    .action(async (token: string, options: { from: string; to: string; strategies: string; capital: string; cycle: string; walkForward?: boolean; train: string; test: string }) => {
+      const capital = parseFloat(options.capital);
+      const strategies = options.strategies ? options.strategies.split(",").map((s) => s.trim()) : [];
 
-      const spinner = ora(`Backtesting ${token} from ${config.startDate} to ${config.endDate}...`).start();
+      if (options.walkForward) {
+        // Walk-forward optimization mode
+        const trainWindow = parseInt(options.train, 10);
+        const testWindow = parseInt(options.test, 10);
+        const stepSize = Math.min(testWindow, 30); // Default step size to test window or 30 days, whichever is smaller
+        const totalDays = trainWindow + (testWindow * 3); // Ensure we have enough data for multiple folds
 
+        const walkConfig: WalkForwardConfig = {
+          tokenId: token,
+          totalDays,
+          trainWindow,
+          testWindow,
+          stepSize,
+          capital,
+          strategies,
+        };
+
+        const spinner = ora(`Walk-forward testing ${token} (${trainWindow}d train, ${testWindow}d test)...`).start();
+
+        try {
+          const backtester = new Backtester({
+            tokenId: token,
+            startDate: options.from,
+            endDate: options.to,
+            initialCapital: capital,
+            strategies,
+            cycle: (options.cycle as BacktestConfig["cycle"]) || "1d",
+          });
+          const result = await backtester.walkForwardTest(walkConfig);
+          spinner.stop();
+          console.log(backtester.formatWalkForwardResults(result, walkConfig));
+        } catch (err) {
+          spinner.fail(`Walk-forward test failed: ${(err as Error).message}`);
+          process.exitCode = 1;
+        }
+      } else {
+        // Regular backtest mode
+        const config: BacktestConfig = {
+          tokenId: token,
+          startDate: options.from,
+          endDate: options.to,
+          initialCapital: capital,
+          strategies,
+          cycle: (options.cycle as BacktestConfig["cycle"]) || "1d",
+        };
+
+        const spinner = ora(`Backtesting ${token} from ${config.startDate} to ${config.endDate}...`).start();
+
+        try {
+          const backtester = new Backtester(config);
+          const result = await backtester.run();
+          spinner.stop();
+          console.log(backtester.formatResults(result));
+        } catch (err) {
+          spinner.fail(`Backtest failed: ${(err as Error).message}`);
+          process.exitCode = 1;
+        }
+      }
+    });
+
+  // ── alerts ──
+  const alerts = agent.command("alerts").description("Manage trading alerts");
+
+  alerts
+    .command("list")
+    .alias("")
+    .description("Show recent alerts")
+    .option("--hours <n>", "Look back N hours", "24")
+    .action(async (options: { hours?: string }) => {
       try {
-        const backtester = new Backtester(config);
-        const result = await backtester.run();
-        spinner.stop();
-        console.log(backtester.formatResults(result));
+        const tradingAgent = new TradingAgent(makeConfig());
+        const hours = parseInt(options.hours ?? "24", 10) || 24;
+        const maxAge = hours * 60 * 60 * 1000;
+
+        const recentAlerts = await tradingAgent.getRecentAlerts(maxAge);
+
+        if (recentAlerts.length === 0) {
+          console.log(chalk.dim("  No alerts in the last " + hours + " hours."));
+          return;
+        }
+
+        console.log('');
+        console.log(chalk.bold(`  Recent Alerts (last ${hours} hours)`));
+        console.log(chalk.dim('  ' + '═'.repeat(60)));
+
+        for (const alert of recentAlerts.slice(0, 20)) {
+          const icon = alert.priority === "critical" ? "🔴" :
+                       alert.priority === "high" ? "🟡" :
+                       alert.priority === "medium" ? "🔵" : "⚫";
+
+          const timeStr = new Date(alert.timestamp).toLocaleString();
+          const priorityColor = alert.priority === "critical" ? chalk.red :
+                                alert.priority === "high" ? chalk.yellow :
+                                alert.priority === "medium" ? chalk.blue : chalk.gray;
+
+          console.log(`  ${icon} ${priorityColor(alert.priority.toUpperCase())} — ${alert.title}`);
+          console.log(chalk.dim(`     ${alert.details.slice(0, 80)}${alert.details.length > 80 ? '...' : ''}`));
+          console.log(chalk.dim(`     Token: ${alert.tokenId}, ${timeStr}`));
+          console.log('');
+        }
       } catch (err) {
-        spinner.fail(`Backtest failed: ${(err as Error).message}`);
+        console.error(chalk.red(`Failed to load alerts: ${(err as Error).message}`));
+        process.exitCode = 1;
+      }
+    });
+
+  alerts
+    .command("clear")
+    .description("Clear all alerts")
+    .action(async () => {
+      try {
+        const tradingAgent = new TradingAgent(makeConfig());
+        await tradingAgent.clearAlerts();
+        console.log(chalk.green("  All alerts cleared."));
+      } catch (err) {
+        console.error(chalk.red(`Failed to clear alerts: ${(err as Error).message}`));
         process.exitCode = 1;
       }
     });

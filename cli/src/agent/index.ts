@@ -31,8 +31,10 @@ import { MarketRegimeDetector } from "./regime.js";
 import type { RegimeAnalysis } from "./regime.js";
 import { CorrelationGuard } from "./correlation.js";
 import type { CorrelationCheck } from "./correlation.js";
+import { AlertSystem } from "./alerts.js";
+import type { Alert } from "./alerts.js";
 
-export type { Signal, ScoringWeights, TradeDecision };
+export type { Signal, ScoringWeights, TradeDecision, Alert };
 
 export interface AgentConfig {
   tokens: string[];
@@ -71,6 +73,7 @@ export class TradingAgent {
   private hyperliquid: HyperliquidProvider;
   private regimeDetector: MarketRegimeDetector;
   private correlationGuard: CorrelationGuard;
+  private alertSystem: AlertSystem;
 
   constructor(config: AgentConfig) {
     this.config = config;
@@ -84,6 +87,7 @@ export class TradingAgent {
     this.hyperliquid = new HyperliquidProvider();
     this.regimeDetector = new MarketRegimeDetector();
     this.correlationGuard = new CorrelationGuard();
+    this.alertSystem = new AlertSystem();
   }
 
   /** Analyze a single token — gather all data and score. */
@@ -411,6 +415,28 @@ export class TradingAgent {
       results.push(result);
     }
     return results;
+  }
+
+  /** Analyze all tokens and generate alerts for state changes. */
+  async analyzeAllWithAlerts(): Promise<{ analyses: TokenAnalysis[]; alerts: Alert[] }> {
+    const analyses = await this.analyzeAll();
+    const alerts = await this.alertSystem.processAnalysis(analyses);
+    return { analyses, alerts };
+  }
+
+  /** Get recent alerts. */
+  async getRecentAlerts(maxAge?: number): Promise<Alert[]> {
+    return this.alertSystem.getRecentAlerts(maxAge);
+  }
+
+  /** Clear all alerts. */
+  async clearAlerts(): Promise<void> {
+    return this.alertSystem.clearAlerts();
+  }
+
+  /** Format alerts for display. */
+  formatAlerts(alerts: Alert[], useMarkdown: boolean = false): string {
+    return this.alertSystem.formatAlerts(alerts, useMarkdown);
   }
 
   /** Format analysis results for display. */
