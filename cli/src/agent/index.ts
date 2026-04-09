@@ -29,6 +29,8 @@ import { HyperliquidProvider } from "../providers/data/hyperliquid.js";
 import type { StrategyContext, StrategyConfig } from "./strategies/index.js";
 import { MarketRegimeDetector } from "./regime.js";
 import type { RegimeAnalysis } from "./regime.js";
+import { CorrelationGuard } from "./correlation.js";
+import type { CorrelationCheck } from "./correlation.js";
 
 export type { Signal, ScoringWeights, TradeDecision };
 
@@ -54,6 +56,7 @@ export interface TokenAnalysis {
     tvl?: number;
   };
   regime?: RegimeAnalysis;
+  correlation?: CorrelationCheck;
 }
 
 export class TradingAgent {
@@ -67,6 +70,7 @@ export class TradingAgent {
   private twitter: TwitterSentimentProvider;
   private hyperliquid: HyperliquidProvider;
   private regimeDetector: MarketRegimeDetector;
+  private correlationGuard: CorrelationGuard;
 
   constructor(config: AgentConfig) {
     this.config = config;
@@ -79,6 +83,7 @@ export class TradingAgent {
     this.twitter = new TwitterSentimentProvider();
     this.hyperliquid = new HyperliquidProvider();
     this.regimeDetector = new MarketRegimeDetector();
+    this.correlationGuard = new CorrelationGuard();
   }
 
   /** Analyze a single token — gather all data and score. */
@@ -373,11 +378,20 @@ export class TradingAgent {
       console.error(chalk.dim(`  Regime detection failed: ${(err as Error).message}`));
     }
 
-    // 7. Compute decision with regime adjustments
+    // 7. BTC correlation check
+    let correlationCheck: CorrelationCheck | undefined;
+    try {
+      correlationCheck = await this.correlationGuard.checkCorrelation(tokenId);
+    } catch (err) {
+      console.error(chalk.dim(`  Correlation check failed: ${(err as Error).message}`));
+    }
+
+    // 8. Compute decision with regime adjustments and correlation suppression
     const decision = computeTradeDecision(
       signals,
       this.config.weights ?? DEFAULT_WEIGHTS,
-      regimeAnalysis?.strategyAdjustments
+      regimeAnalysis?.strategyAdjustments,
+      correlationCheck
     );
 
     return {
@@ -385,6 +399,7 @@ export class TradingAgent {
       decision,
       data: { technicalSignals, fearAndGreed: fearAndGreedValue, tvl },
       regime: regimeAnalysis,
+      correlation: correlationCheck,
     };
   }
 
@@ -423,6 +438,29 @@ export class TradingAgent {
                        chalk.yellow("→");
 
       lines.push(`  Market Regime: ${regimeStr} (${confidenceStr} confidence) | BTC trend: ${trendStr} | Volatility: ${regime.volatilityLevel}`);
+      lines.push(chalk.dim("  " + "─".repeat(60)));
+    }
+
+    // BTC correlation display (use the first non-BTC result's correlation if available)
+    const correlation = results.find(r => r.token !== "bitcoin")?.correlation;
+    if (correlation) {
+      const biasColor = correlation.btcBias === "bullish" ? chalk.green :
+                        correlation.btcBias === "bearish" ? chalk.red :
+                        chalk.yellow;
+
+      const biasStr = biasColor(correlation.btcBias.toUpperCase());
+      const scoreStr = correlation.btcScore >= 0 ? `+${correlation.btcScore.toFixed(2)}` : correlation.btcScore.toFixed(2);
+
+      let suppressionStr = "";
+      if (correlation.shouldSuppress && correlation.btcBias === "bearish") {
+        const suppressionPct = Math.round((1 - correlation.suppressionFactor) * 100);
+        suppressionStr = ` — alt longs suppressed ${suppressionPct}%`;
+      } else if (!correlation.shouldSuppress && correlation.btcBias === "bullish") {
+        const boostPct = Math.round((correlation.suppressionFactor - 1) * 100);
+        if (boostPct > 0) suppressionStr = ` — alt longs boosted ${boostPct}%`;
+      }
+
+      lines.push(`  BTC Correlation: ${biasStr} (${scoreStr})${suppressionStr}`);
       lines.push(chalk.dim("  " + "─".repeat(60)));
     }
 

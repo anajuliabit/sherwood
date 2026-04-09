@@ -14,11 +14,13 @@ import { DexFlowStrategy } from './dex-flow.js';
 import { MeanReversionStrategy } from './mean-reversion.js';
 import { TwitterSentimentStrategy } from './twitter-sentiment.js';
 import { HyperliquidFlowStrategy } from './hyperliquid-flow.js';
+import { MultiTimeframeStrategy } from './multi-timeframe.js';
 
 export type { Strategy, StrategyContext, StrategyConfig };
 export { SmartMoneyStrategy, TokenUnlockStrategy, SentimentContrarianStrategy };
 export { BreakoutOnChainStrategy, TvlMomentumStrategy, FundingRateStrategy };
 export { DexFlowStrategy, MeanReversionStrategy, TwitterSentimentStrategy, HyperliquidFlowStrategy };
+export { MultiTimeframeStrategy };
 
 export const DEFAULT_STRATEGIES: Strategy[] = [
   new SmartMoneyStrategy(),
@@ -31,6 +33,7 @@ export const DEFAULT_STRATEGIES: Strategy[] = [
   new MeanReversionStrategy(),
   new TwitterSentimentStrategy(),
   new HyperliquidFlowStrategy(),
+  new MultiTimeframeStrategy(),
 ];
 
 /**

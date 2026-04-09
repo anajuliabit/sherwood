@@ -4,6 +4,7 @@
 
 import type { TechnicalSignals } from "./technical.js";
 import { clamp } from "./utils.js";
+import type { CorrelationCheck } from "./correlation.js";
 
 export interface Signal {
   name: string;
@@ -364,6 +365,7 @@ export function computeTradeDecision(
   signals: Signal[],
   weights?: ScoringWeights,
   regimeAdjustments?: Record<string, number>,
+  correlationCheck?: CorrelationCheck,
 ): TradeDecision {
   const w = weights ?? DEFAULT_WEIGHTS;
 
@@ -379,6 +381,7 @@ export function computeTradeDecision(
     // Strategy signal mappings to categories
     breakoutOnChain: w.technical,
     meanReversion: w.technical,
+    multiTimeframe: w.technical,
     dexFlow: w.onchain,
     fundingRate: w.fundamental,
     tvlMomentum: w.fundamental,
@@ -411,8 +414,28 @@ export function computeTradeDecision(
     totalWeight += signalWeight;
   }
 
-  const score = totalWeight > 0 ? weightedSum / totalWeight : 0;
+  let score = totalWeight > 0 ? weightedSum / totalWeight : 0;
   const confidence = totalWeight > 0 ? weightedConfidence / totalWeight : 0;
+
+  // Apply correlation suppression if provided
+  if (correlationCheck) {
+    if (correlationCheck.btcBias === "bearish" && score > 0) {
+      // Suppress long signals when BTC is bearish
+      score *= correlationCheck.suppressionFactor;
+    } else if (correlationCheck.btcBias === "bearish" && score < 0) {
+      // Boost short signals slightly when BTC is bearish
+      score *= (1 + Math.abs(correlationCheck.btcScore) * 0.3);
+    } else if (correlationCheck.btcBias === "bullish" && score > 0) {
+      // Boost long signals slightly when BTC is bullish
+      score *= correlationCheck.suppressionFactor;
+    } else if (correlationCheck.btcBias === "bullish" && score < 0) {
+      // Suppress short signals when BTC is bullish
+      score *= (1 - correlationCheck.btcScore * 0.3);
+    }
+
+    // Clamp the final score
+    score = Math.max(-1, Math.min(1, score));
+  }
 
   // Determine action
   let action: TradeDecision["action"];
