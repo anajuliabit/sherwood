@@ -382,6 +382,7 @@ export function computeTradeDecision(
     fundingRate: w.fundamental,
     tvlMomentum: w.fundamental,
     sentimentContrarian: w.sentiment,
+    twitterSentiment: w.sentiment,
     tokenUnlock: w.event,
   };
 

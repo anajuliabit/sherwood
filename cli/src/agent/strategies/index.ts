@@ -12,11 +12,12 @@ import { TvlMomentumStrategy } from './tvl-momentum.js';
 import { FundingRateStrategy } from './funding-rate.js';
 import { DexFlowStrategy } from './dex-flow.js';
 import { MeanReversionStrategy } from './mean-reversion.js';
+import { TwitterSentimentStrategy } from './twitter-sentiment.js';
 
 export type { Strategy, StrategyContext, StrategyConfig };
 export { SmartMoneyStrategy, TokenUnlockStrategy, SentimentContrarianStrategy };
 export { BreakoutOnChainStrategy, TvlMomentumStrategy, FundingRateStrategy };
-export { DexFlowStrategy, MeanReversionStrategy };
+export { DexFlowStrategy, MeanReversionStrategy, TwitterSentimentStrategy };
 
 export const DEFAULT_STRATEGIES: Strategy[] = [
   new SmartMoneyStrategy(),
@@ -27,6 +28,7 @@ export const DEFAULT_STRATEGIES: Strategy[] = [
   new FundingRateStrategy(),
   new DexFlowStrategy(),
   new MeanReversionStrategy(),
+  new TwitterSentimentStrategy(),
 ];
 
 /**

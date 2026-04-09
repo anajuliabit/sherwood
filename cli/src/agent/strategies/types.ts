@@ -33,6 +33,13 @@ export interface StrategyContext {
     upcomingUnlocks: Array<{ percentOfSupply: number; daysUntil: number; description: string }>;
     totalUpcomingPercent: number;
   };
+  twitterData?: {             // from Twitter API v2 (free tier with auth)
+    mentionVolume: number;
+    sentimentScore: number;
+    engagementWeightedSentiment: number;
+    volumeSpike: number;
+    tweetCount: number;
+  };
   tokenSymbol?: string;       // resolved symbol (e.g. "ETH" for "ethereum")
 }
 

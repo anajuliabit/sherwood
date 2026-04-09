@@ -24,6 +24,7 @@ import { runStrategies } from "./strategies/index.js";
 import { DexScreenerProvider } from "../providers/data/dexscreener.js";
 import { FundingRateProvider } from "../providers/data/funding-rate.js";
 import { TokenUnlocksProvider } from "../providers/data/token-unlocks.js";
+import { TwitterSentimentProvider } from "../providers/data/twitter.js";
 import type { StrategyContext, StrategyConfig } from "./strategies/index.js";
 
 export type { Signal, ScoringWeights, TradeDecision };
@@ -59,6 +60,7 @@ export class TradingAgent {
   private dexscreener: DexScreenerProvider;
   private fundingRate: FundingRateProvider;
   private tokenUnlocks: TokenUnlocksProvider;
+  private twitter: TwitterSentimentProvider;
 
   constructor(config: AgentConfig) {
     this.config = config;
@@ -68,6 +70,7 @@ export class TradingAgent {
     this.dexscreener = new DexScreenerProvider();
     this.fundingRate = new FundingRateProvider();
     this.tokenUnlocks = new TokenUnlocksProvider();
+    this.twitter = new TwitterSentimentProvider();
   }
 
   /** Analyze a single token — gather all data and score. */
@@ -246,7 +249,7 @@ export class TradingAgent {
     let marketData: any = undefined;
 
     try {
-      const [symbolResult, fundingRateResult, unlockResult] = await Promise.allSettled([
+      const [symbolResult, fundingRateResult, unlockResult, twitterResult] = await Promise.allSettled([
         // Resolve token symbol + get market data for strategies
         this.coingecko.getCoinDetails(tokenId).then(async (coinDetails) => {
           const symbol = coinDetails?.symbol?.toUpperCase();
@@ -258,7 +261,10 @@ export class TradingAgent {
         this.fundingRate.getFundingRate(tokenId),
 
         // Fetch token unlock estimates (free, from DefiLlama FDV)
-        this.tokenUnlocks.getUnlocks(tokenId)
+        this.tokenUnlocks.getUnlocks(tokenId),
+
+        // Fetch Twitter sentiment data (free tier with auth)
+        this.twitter.getSentiment(tokenId)
       ]);
 
       // Process symbol/market data results
@@ -281,6 +287,14 @@ export class TradingAgent {
         unlockData = unlockResult.value;
       }
 
+      // Process Twitter results
+      let twitterData: StrategyContext['twitterData'] = undefined;
+      if (twitterResult.status === 'fulfilled' && twitterResult.value) {
+        twitterData = twitterResult.value;
+      } else if (twitterResult.status === 'rejected') {
+        console.error(chalk.dim(`  Twitter sentiment failed: ${twitterResult.reason}`));
+      }
+
       const stratCtx: StrategyContext = {
         tokenId,
         candles, // reuse from phase 1
@@ -296,6 +310,7 @@ export class TradingAgent {
         dexData: undefined, // DexFlowStrategy fetches this internally
         fundingRateData, // from phase 3
         unlockData, // from phase 3
+        twitterData, // from phase 3
         tokenSymbol, // from phase 3
       };
 
