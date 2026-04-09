@@ -363,6 +363,7 @@ export function scoreEvent(data: {
 export function computeTradeDecision(
   signals: Signal[],
   weights?: ScoringWeights,
+  regimeAdjustments?: Record<string, number>,
 ): TradeDecision {
   const w = weights ?? DEFAULT_WEIGHTS;
 
@@ -393,8 +394,19 @@ export function computeTradeDecision(
 
   for (const signal of signals) {
     const signalWeight = signal._weightOverride ?? weightMap[signal.name] ?? 0.1;
-    weightedSum += signal.value * signalWeight;
-    weightedConfidence += signal.confidence * signalWeight;
+
+    // Apply regime adjustment if available
+    let adjustedValue = signal.value;
+    let adjustedConfidence = signal.confidence;
+
+    if (regimeAdjustments && signal.name in regimeAdjustments) {
+      const adjustment = regimeAdjustments[signal.name]!;
+      adjustedValue *= adjustment;
+      adjustedConfidence *= adjustment;
+    }
+
+    weightedSum += adjustedValue * signalWeight;
+    weightedConfidence += adjustedConfidence * signalWeight;
     totalWeight += signalWeight;
   }
 

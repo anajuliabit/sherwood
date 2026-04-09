@@ -79,6 +79,19 @@ export function registerAgentCommands(program: Command): void {
           for (const r of results) {
             console.log(chalk.bold(`\n  ${r.token.toUpperCase()} — Signal Breakdown`));
             console.log(chalk.dim("  " + "─".repeat(50)));
+
+            // Show regime info if available
+            if (r.regime) {
+              const regimeColor = r.regime.regime === "trending-up" ? chalk.green :
+                                  r.regime.regime === "trending-down" ? chalk.red :
+                                  r.regime.regime === "ranging" ? chalk.yellow :
+                                  r.regime.regime === "high-volatility" ? chalk.magenta :
+                                  chalk.cyan;
+              console.log(
+                `  ${"Market Regime".padEnd(22)} ${regimeColor("▮".repeat(10))} ${regimeColor(r.regime.regime.replace('-', ' '))}  ${chalk.dim(r.regime.details.slice(0, 60))}`
+              );
+            }
+
             for (const signal of r.decision.signals) {
               const bar = renderBar(signal.value);
               const color =

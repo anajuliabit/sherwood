@@ -25,7 +25,10 @@ import { DexScreenerProvider } from "../providers/data/dexscreener.js";
 import { FundingRateProvider } from "../providers/data/funding-rate.js";
 import { TokenUnlocksProvider } from "../providers/data/token-unlocks.js";
 import { TwitterSentimentProvider } from "../providers/data/twitter.js";
+import { HyperliquidProvider } from "../providers/data/hyperliquid.js";
 import type { StrategyContext, StrategyConfig } from "./strategies/index.js";
+import { MarketRegimeDetector } from "./regime.js";
+import type { RegimeAnalysis } from "./regime.js";
 
 export type { Signal, ScoringWeights, TradeDecision };
 
@@ -50,6 +53,7 @@ export interface TokenAnalysis {
     fearAndGreed?: number;
     tvl?: number;
   };
+  regime?: RegimeAnalysis;
 }
 
 export class TradingAgent {
@@ -61,6 +65,8 @@ export class TradingAgent {
   private fundingRate: FundingRateProvider;
   private tokenUnlocks: TokenUnlocksProvider;
   private twitter: TwitterSentimentProvider;
+  private hyperliquid: HyperliquidProvider;
+  private regimeDetector: MarketRegimeDetector;
 
   constructor(config: AgentConfig) {
     this.config = config;
@@ -71,6 +77,8 @@ export class TradingAgent {
     this.fundingRate = new FundingRateProvider();
     this.tokenUnlocks = new TokenUnlocksProvider();
     this.twitter = new TwitterSentimentProvider();
+    this.hyperliquid = new HyperliquidProvider();
+    this.regimeDetector = new MarketRegimeDetector();
   }
 
   /** Analyze a single token — gather all data and score. */
@@ -249,7 +257,7 @@ export class TradingAgent {
     let marketData: any = undefined;
 
     try {
-      const [symbolResult, fundingRateResult, unlockResult, twitterResult] = await Promise.allSettled([
+      const [symbolResult, fundingRateResult, unlockResult, twitterResult, hyperliquidResult] = await Promise.allSettled([
         // Resolve token symbol + get market data for strategies
         this.coingecko.getCoinDetails(tokenId).then(async (coinDetails) => {
           const symbol = coinDetails?.symbol?.toUpperCase();
@@ -264,7 +272,10 @@ export class TradingAgent {
         this.tokenUnlocks.getUnlocks(tokenId),
 
         // Fetch Twitter sentiment data (free tier with auth)
-        this.twitter.getSentiment(tokenId)
+        this.twitter.getSentiment(tokenId),
+
+        // Fetch Hyperliquid data (free, exchange-native data)
+        this.hyperliquid.getHyperliquidData(tokenId)
       ]);
 
       // Process symbol/market data results
@@ -293,6 +304,14 @@ export class TradingAgent {
         twitterData = twitterResult.value;
       } else if (twitterResult.status === 'rejected') {
         console.error(chalk.dim(`  Twitter sentiment failed: ${twitterResult.reason}`));
+      }
+
+      // Process Hyperliquid results
+      let hyperliquidData: StrategyContext['hyperliquidData'] = undefined;
+      if (hyperliquidResult.status === 'fulfilled' && hyperliquidResult.value) {
+        hyperliquidData = hyperliquidResult.value;
+      } else if (hyperliquidResult.status === 'rejected') {
+        console.error(chalk.dim(`  Hyperliquid data failed: ${hyperliquidResult.reason}`));
       }
 
       const stratCtx: StrategyContext = {
@@ -326,10 +345,46 @@ export class TradingAgent {
       console.error(chalk.dim(`  Strategy modules failed: ${(err as Error).message}`));
     }
 
-    // 7. Compute decision
-    const decision = computeTradeDecision(signals, this.config.weights ?? DEFAULT_WEIGHTS);
+    // 6. Market regime detection
+    let regimeAnalysis: RegimeAnalysis | undefined;
+    try {
+      let btcCandles: Candle[] = candles || [];
 
-    return { token: tokenId, decision, data: { technicalSignals, fearAndGreed: fearAndGreedValue, tvl } };
+      // If analyzing a non-BTC token, fetch BTC candles for regime analysis
+      if (tokenId !== "bitcoin" && (!candles || candles.length < 100)) {
+        const btcOhlc = await this.coingecko.getOHLC("bitcoin", 200);
+        if (btcOhlc && btcOhlc.length > 100) {
+          btcCandles = btcOhlc.map((c: number[]) => ({
+            timestamp: c[0]!,
+            open: c[1]!,
+            high: c[2]!,
+            low: c[3]!,
+            close: c[4] ?? c[3]!,
+            volume: 0, // Volume not needed for regime detection
+          }));
+        }
+      }
+
+      if (btcCandles.length > 100) {
+        regimeAnalysis = await this.regimeDetector.detect(btcCandles);
+      }
+    } catch (err) {
+      console.error(chalk.dim(`  Regime detection failed: ${(err as Error).message}`));
+    }
+
+    // 7. Compute decision with regime adjustments
+    const decision = computeTradeDecision(
+      signals,
+      this.config.weights ?? DEFAULT_WEIGHTS,
+      regimeAnalysis?.strategyAdjustments
+    );
+
+    return {
+      token: tokenId,
+      decision,
+      data: { technicalSignals, fearAndGreed: fearAndGreedValue, tvl },
+      regime: regimeAnalysis,
+    };
   }
 
   /** Analyze all watchlist tokens. */
@@ -350,6 +405,26 @@ export class TradingAgent {
     lines.push("");
     lines.push(chalk.bold("  Sherwood Trading Agent — Analysis Results"));
     lines.push(chalk.dim("  " + "─".repeat(60)));
+
+    // Market regime display (use the first result's regime if available)
+    const regime = results[0]?.regime;
+    if (regime) {
+      const regimeColor = regime.regime === "trending-up" ? chalk.green :
+                          regime.regime === "trending-down" ? chalk.red :
+                          regime.regime === "ranging" ? chalk.yellow :
+                          regime.regime === "high-volatility" ? chalk.magenta :
+                          chalk.cyan;
+
+      const regimeStr = regimeColor(regime.regime.toUpperCase().replace('-', ' '));
+      const confidenceStr = `${Math.round(regime.confidence * 100)}%`;
+      const trendStr = regime.btcTrend === "up" ? chalk.green("↑") :
+                       regime.btcTrend === "down" ? chalk.red("↓") :
+                       chalk.yellow("→");
+
+      lines.push(`  Market Regime: ${regimeStr} (${confidenceStr} confidence) | BTC trend: ${trendStr} | Volatility: ${regime.volatilityLevel}`);
+      lines.push(chalk.dim("  " + "─".repeat(60)));
+    }
+
     lines.push("");
 
     // Column headers
