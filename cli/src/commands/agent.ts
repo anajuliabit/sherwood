@@ -54,9 +54,10 @@ export function registerAgentCommands(program: Command): void {
     .argument("[tokens...]", "Token IDs to analyze (e.g., ethereum bitcoin)")
     .option("--all", "Analyze full watchlist")
     .option("--json", "Output as JSON")
-    .action(async (tokens: string[], options: { all?: boolean; json?: boolean }) => {
+    .option("--x402", "Include paid x402 data (Nansen smart-money, Messari fundamentals)")
+    .action(async (tokens: string[], options: { all?: boolean; json?: boolean; x402?: boolean }) => {
       const tokenList = options.all ? DEFAULT_TOKENS : tokens.length > 0 ? tokens : DEFAULT_TOKENS;
-      const config = makeConfig({ tokens: tokenList });
+      const config = makeConfig({ tokens: tokenList, useX402: options.x402 ?? false });
       const tradingAgent = new TradingAgent(config);
       const spinner = ora("Analyzing tokens...").start();
 
@@ -223,7 +224,8 @@ export function registerAgentCommands(program: Command): void {
     .option("--mode <mode>", "Execution mode: dry-run (default), hyperliquid-perp", "dry-run")
     .option("--strategy-clone <address>", "Strategy clone address on HyperEVM (required for hyperliquid-perp)")
     .option("--chain <chain>", "Chain for live execution (hyperevm, hyperevm-testnet)", "ethereum")
-    .action(async (options: { cycle?: string; dryRun?: boolean; tokens?: string; log?: string; mode?: string; strategyClone?: string; chain?: string }) => {
+    .option("--x402", "Include paid x402 data (Nansen smart-money, Messari fundamentals)")
+    .action(async (options: { cycle?: string; dryRun?: boolean; tokens?: string; log?: string; mode?: string; strategyClone?: string; chain?: string; x402?: boolean }) => {
       const tokenList = options.tokens ? options.tokens.split(",").map((t) => t.trim()) : DEFAULT_TOKENS;
       const cycle = (options.cycle ?? "4h") as AgentConfig["cycle"];
 
@@ -260,7 +262,7 @@ export function registerAgentCommands(program: Command): void {
       }
 
       const loopConfig: LoopConfig = {
-        agent: makeConfig({ tokens: tokenList, cycle, dryRun: !isLive }),
+        agent: makeConfig({ tokens: tokenList, cycle, dryRun: !isLive, useX402: options.x402 ?? false }),
         execution: {
           dryRun: !isLive,
           mode: (options.mode ?? 'dry-run') as 'dry-run' | 'hyperliquid-perp',
