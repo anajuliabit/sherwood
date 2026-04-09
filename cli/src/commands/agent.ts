@@ -14,6 +14,7 @@ import type { AgentConfig, TokenAnalysis, Alert } from "../agent/index.js";
 import { getLatestSignals } from "../agent/technical.js";
 import type { Candle } from "../agent/technical.js";
 import { CoinGeckoProvider } from "../providers/data/coingecko.js";
+import { DynamicTokenSelector } from "../agent/token-selector.js";
 import { SentimentProvider } from "../providers/data/sentiment.js";
 import {
   scoreTechnical,
@@ -53,10 +54,35 @@ export function registerAgentCommands(program: Command): void {
     .description("Analyze token(s) using multi-signal scoring")
     .argument("[tokens...]", "Token IDs to analyze (e.g., ethereum bitcoin)")
     .option("--all", "Analyze full watchlist")
+    .option("--auto", "Use dynamic token selection from Hyperliquid market data")
     .option("--json", "Output as JSON")
     .option("--x402", "Include paid x402 data (Nansen smart-money, Messari fundamentals)")
-    .action(async (tokens: string[], options: { all?: boolean; json?: boolean; x402?: boolean }) => {
-      const tokenList = options.all ? DEFAULT_TOKENS : tokens.length > 0 ? tokens : DEFAULT_TOKENS;
+    .action(async (tokens: string[], options: { all?: boolean; auto?: boolean; json?: boolean; x402?: boolean }) => {
+      let tokenList: string[];
+      let selectionSummary: string | undefined;
+
+      if (options.auto) {
+        const spinner = ora("Fetching dynamic token selection from Hyperliquid...").start();
+        try {
+          const selector = new DynamicTokenSelector();
+          const selection = await selector.selectTokens();
+          tokenList = selection.tokens;
+          selectionSummary = selector.formatSelectionSummary(selection);
+          spinner.stop();
+
+          // Show selection summary
+          console.log();
+          console.log(selectionSummary);
+          console.log();
+        } catch (error) {
+          spinner.fail(`Dynamic selection failed: ${(error as Error).message}`);
+          console.log("Falling back to default tokens...");
+          tokenList = DEFAULT_TOKENS;
+        }
+      } else {
+        tokenList = options.all ? DEFAULT_TOKENS : tokens.length > 0 ? tokens : DEFAULT_TOKENS;
+      }
+
       const config = makeConfig({ tokens: tokenList, useX402: options.x402 ?? false });
       const tradingAgent = new TradingAgent(config);
       const spinner = ora("Analyzing tokens...").start();
@@ -235,13 +261,24 @@ export function registerAgentCommands(program: Command): void {
     .option("--cycle <interval>", "Cycle interval (15m, 1h, 4h)", "4h")
     .option("--dry-run", "Paper trading mode", true)
     .option("--tokens <tokens>", "Comma-separated token list")
+    .option("--auto", "Use dynamic token selection from Hyperliquid market data")
     .option("--log <path>", "Path to write cycle logs")
     .option("--mode <mode>", "Execution mode: dry-run (default), hyperliquid-perp", "dry-run")
     .option("--strategy-clone <address>", "Strategy clone address on HyperEVM (required for hyperliquid-perp)")
     .option("--chain <chain>", "Chain for live execution (hyperevm, hyperevm-testnet)", "ethereum")
     .option("--x402", "Include paid x402 data (Nansen smart-money, Messari fundamentals)")
-    .action(async (options: { cycle?: string; dryRun?: boolean; tokens?: string; log?: string; mode?: string; strategyClone?: string; chain?: string; x402?: boolean }) => {
-      const tokenList = options.tokens ? options.tokens.split(",").map((t) => t.trim()) : DEFAULT_TOKENS;
+    .action(async (options: { cycle?: string; dryRun?: boolean; tokens?: string; auto?: boolean; log?: string; mode?: string; strategyClone?: string; chain?: string; x402?: boolean }) => {
+      let tokenList: string[];
+
+      if (options.auto) {
+        console.log(chalk.dim("  Using dynamic token selection from Hyperliquid (refreshes every 30 min)"));
+        // For the loop, we'll create a placeholder list that gets replaced dynamically
+        // The actual selection happens in the loop itself to allow periodic refresh
+        tokenList = ['bitcoin', 'ethereum']; // Minimal list, will be replaced
+      } else {
+        tokenList = options.tokens ? options.tokens.split(",").map((t) => t.trim()) : DEFAULT_TOKENS;
+      }
+
       const cycle = (options.cycle ?? "4h") as AgentConfig["cycle"];
 
       // Load persisted risk config from disk (written by `agent config --set`)
@@ -288,6 +325,7 @@ export function registerAgentCommands(program: Command): void {
         },
         riskConfig: savedRiskConfig,
         logPath: options.log,
+        autoDynamicSelection: options.auto ?? false,
       };
 
       const loop = new AgentLoop(loopConfig);

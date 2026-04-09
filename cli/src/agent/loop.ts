@@ -15,6 +15,7 @@ import { RiskManager, DEFAULT_RISK_CONFIG } from './risk.js';
 import type { RiskConfig } from './risk.js';
 import { CoinGeckoProvider } from '../providers/data/coingecko.js';
 import { Reporter } from './reporter.js';
+import { DynamicTokenSelector } from './token-selector.js';
 
 export interface LoopConfig {
   agent: AgentConfig;
@@ -22,6 +23,7 @@ export interface LoopConfig {
   riskConfig?: Partial<RiskConfig>;
   reportToTelegram?: boolean;
   logPath?: string;
+  autoDynamicSelection?: boolean;
 }
 
 export interface CycleResult {
@@ -166,11 +168,30 @@ export class AgentLoop {
       }
     }
 
-    // 3. Analyze all watchlist tokens
+    // 3. Update token list if using dynamic selection
+    if (this.config.autoDynamicSelection) {
+      try {
+        const selector = new DynamicTokenSelector();
+        const selection = await selector.selectTokens();
+
+        // Update agent config with new tokens
+        this.config.agent.tokens = selection.tokens;
+        this.agent = new TradingAgent(this.config.agent);
+
+        if (this.cycleCount % 6 === 1) { // Show selection summary every 6th cycle (~30min for 5min cycles)
+          console.log(chalk.dim(`  Updated tokens: ${selection.tokens.length} from ${selection.totalMarketsScanned} HL markets`));
+        }
+      } catch (err) {
+        errors.push(`Dynamic selection failed: ${(err as Error).message}`);
+        console.log(chalk.yellow(`  Warning: Dynamic selection failed, using existing tokens`));
+      }
+    }
+
+    // 4. Analyze all watchlist tokens
     console.log(chalk.dim(`  Analyzing ${this.config.agent.tokens.length} tokens...`));
     const results = await this.agent.analyzeAll();
 
-    // 4. Collect signals and execute trades for actionable ones
+    // 5. Collect signals and execute trades for actionable ones
     const signals: CycleResult['signals'] = [];
 
     for (const result of results) {
