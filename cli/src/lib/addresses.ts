@@ -141,7 +141,7 @@ const ROBINHOOD_TESTNET_INFRA = {
 // USDC: native USDC on HyperEVM.
 
 const HYPEREVM_TOKENS = {
-  USDC: ZERO, // TODO: set after USDC deployment on HyperEVM
+  USDC: "0xb88339CB7199b77E23DB6E890353E22632Ba630f" as Address,
   WETH: ZERO,
   cbETH: ZERO,
   wstETH: ZERO,

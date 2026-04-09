@@ -176,7 +176,7 @@ const ROBINHOOD_TESTNET_ADDRESSES: ChainAddresses = {
 
 const HYPEREVM_ADDRESSES: ChainAddresses = {
   factory: "0x4085EEa1E6d3D20E84D8Ae14964FAb8b899DA40a",
-  usdc: ZERO, // TODO: set after USDC availability on HyperEVM
+  usdc: "0xb88339CB7199b77E23DB6E890353E22632Ba630f",
   l2Registry: ZERO,
   identityRegistry: ZERO,
   eas: ZERO,
