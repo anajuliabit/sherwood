@@ -1,6 +1,6 @@
 /**
  * CLI commands for the autonomous trading agent.
- * sherwood agent <analyze|signals|start|status|history|config>
+ * sherwood agent <analyze|signals|start|status|history|config|backtest>
  */
 
 import { Command } from "commander";

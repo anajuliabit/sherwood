@@ -154,7 +154,7 @@ export class TradeExecutor {
       }
     } else {
       try {
-        const result = await this.executeLive(order);
+        const result = await this.executeLive(order, currentPrice);
         // If live execution succeeded, also track in portfolio
         const position = await this.portfolio.openPosition({
           tokenId,
@@ -231,9 +231,9 @@ export class TradeExecutor {
   }
 
   /** Live execution — dispatches to the configured mode */
-  private async executeLive(order: OrderParams): Promise<{ txHash: string; executedPrice: number }> {
+  private async executeLive(order: OrderParams, currentPrice?: number): Promise<{ txHash: string; executedPrice: number }> {
     if (this.config.mode === 'hyperliquid-perp') {
-      return this.executeHyperliquidPerp(order);
+      return this.executeHyperliquidPerp(order, currentPrice);
     }
     throw new Error(
       'Live execution requires --mode hyperliquid-perp. ' +
@@ -242,9 +242,10 @@ export class TradeExecutor {
   }
 
   /** Execute a trade on HyperEVM via the HyperliquidPerpStrategy contract */
-  private async executeHyperliquidPerp(order: OrderParams): Promise<{ txHash: string; executedPrice: number }> {
+  private async executeHyperliquidPerp(order: OrderParams, currentPrice?: number): Promise<{ txHash: string; executedPrice: number }> {
     if (!this.config.strategyClone) throw new Error('--strategy-clone is required for hyperliquid-perp mode');
     if (!this.config.proposerPrivateKey) throw new Error('SHERWOOD_PROPOSER_KEY env var is required for live execution');
+    if (!currentPrice || currentPrice <= 0) throw new Error('currentPrice is required for live execution');
 
     const account = privateKeyToAccount(this.config.proposerPrivateKey);
     const chain = this.config.chain === 'hyperevm-testnet' ? hyperevmTestnet : hyperevm;
@@ -254,8 +255,11 @@ export class TradeExecutor {
       transport: http(),
     });
 
-    const limitPx = priceToUint64(order.stopLoss > 0 ? order.amountUsd / (order.amountUsd / order.stopLoss) : order.amountUsd);
-    const sz = sizeToUint64(order.amountUsd);
+    // limitPx: slightly above market for buy IOC (1% slippage buffer)
+    const limitPx = priceToUint64(currentPrice * 1.01);
+    // sz: token quantity = USD amount / current price
+    const quantity = order.amountUsd / currentPrice;
+    const sz = sizeToUint64(quantity);
     const stopLossPx = priceToUint64(order.stopLoss);
     const stopLossSz = sz;
 
@@ -280,7 +284,7 @@ export class TradeExecutor {
 
     return {
       txHash,
-      executedPrice: order.amountUsd / Number(sz) * 1e6, // approximate
+      executedPrice: currentPrice,
     };
   }
 
