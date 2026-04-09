@@ -79,11 +79,13 @@ export class TradingAgent {
     let candles: Candle[] | undefined;
     let sentimentZScore: number | undefined;
 
-    // 1. Fetch OHLC data from CoinGecko and calculate technical indicators
-    try {
-      const ohlcRaw = await this.coingecko.getOHLC(tokenId, 30);
-      if (ohlcRaw && ohlcRaw.length > 10) {
-        candles = ohlcRaw.map((c: number[]) => ({
+    // Phase 1: Parallel basic data fetching (OHLC, Fear & Greed, TVL)
+    const [ohlcResult, fearGreedResult, tvlResult] = await Promise.allSettled([
+      // 1. Fetch OHLC data from CoinGecko
+      this.coingecko.getOHLC(tokenId, 30).then(async (ohlcRaw) => {
+        if (!ohlcRaw || ohlcRaw.length <= 10) return null;
+
+        const rawCandles = ohlcRaw.map((c: number[]) => ({
           timestamp: c[0]!,
           open: c[1]!,
           high: c[2]!,
@@ -92,12 +94,12 @@ export class TradingAgent {
           volume: 0, // OHLC endpoint doesn't include volume
         }));
 
-        // Fetch market data for volume info
+        // Fetch volume data in parallel
         try {
           const marketData = await this.coingecko.getMarketData(tokenId, 30);
           if (marketData?.total_volumes) {
             // Map volumes to nearest candle by timestamp
-            for (const candle of candles) {
+            for (const candle of rawCandles) {
               const nearest = marketData.total_volumes.reduce(
                 (best: number[], v: number[]) =>
                   Math.abs(v[0]! - candle.timestamp) < Math.abs(best[0]! - candle.timestamp)
@@ -112,54 +114,70 @@ export class TradingAgent {
           // Volume data optional
         }
 
-        technicalSignals = getLatestSignals(candles);
-        signals.push(scoreTechnical(technicalSignals));
-      }
-    } catch (err) {
-      // Technical analysis failed, continue with other signals
-      console.error(chalk.dim(`  Technical analysis failed for ${tokenId}: ${(err as Error).message}`));
+        return rawCandles;
+      }),
+
+      // 2. Fetch Fear & Greed
+      this.sentiment.getFearAndGreed(),
+
+      // 3. Fetch TVL data (if DeFi protocol)
+      this.defillama.getProtocolTvl(tokenId).then(async (tvlValue) => {
+        if (typeof tvlValue === "number" && tvlValue > 0) {
+          const priceData = await this.coingecko.getPrice([tokenId], ["usd"]);
+          const mcap = priceData?.[tokenId]?.usd_market_cap;
+          return { tvl: tvlValue, mcapToTvl: mcap && tvlValue > 0 ? mcap / tvlValue : undefined };
+        }
+        return null;
+      })
+    ]);
+
+    // Process OHLC results
+    if (ohlcResult.status === 'fulfilled' && ohlcResult.value) {
+      candles = ohlcResult.value;
+      technicalSignals = getLatestSignals(candles);
+      signals.push(scoreTechnical(technicalSignals));
+    } else if (ohlcResult.status === 'rejected') {
+      console.error(chalk.dim(`  Technical analysis failed for ${tokenId}: ${ohlcResult.reason}`));
     }
 
-    // 2. Fetch Fear & Greed
-    try {
-      const fgData = await this.sentiment.getFearAndGreed();
-      if (fgData.length > 0) {
-        fearAndGreedValue = fgData[0]!.value;
-        const values = fgData.map((d) => d.value);
-        sentimentZScore = this.sentiment.computeSentimentZScore(values);
-        signals.push(scoreSentiment(fearAndGreedValue, sentimentZScore));
-      }
-    } catch (err) {
-      console.error(chalk.dim(`  Sentiment data failed: ${(err as Error).message}`));
+    // Process Fear & Greed results
+    if (fearGreedResult.status === 'fulfilled' && fearGreedResult.value?.length > 0) {
+      const fgData = fearGreedResult.value;
+      fearAndGreedValue = fgData[0]!.value;
+      const values = fgData.map((d) => d.value);
+      sentimentZScore = this.sentiment.computeSentimentZScore(values);
+      signals.push(scoreSentiment(fearAndGreedValue, sentimentZScore));
+    } else if (fearGreedResult.status === 'rejected') {
+      console.error(chalk.dim(`  Sentiment data failed: ${fearGreedResult.reason}`));
     }
 
-    // 3. Fetch TVL data (if DeFi protocol)
-    try {
-      tvl = await this.defillama.getProtocolTvl(tokenId);
-      if (typeof tvl === "number" && tvl > 0) {
-        // Try to get price data for mcap/tvl ratio
-        const priceData = await this.coingecko.getPrice([tokenId], ["usd"]);
-        const mcap = priceData?.[tokenId]?.usd_market_cap;
-        signals.push(
-          scoreFundamental({
-            mcapToTvl: mcap && tvl > 0 ? mcap / tvl : undefined,
-          }),
-        );
-      }
-    } catch {
+    // Process TVL results
+    if (tvlResult.status === 'fulfilled' && tvlResult.value) {
+      const { tvl: tvlValue, mcapToTvl } = tvlResult.value;
+      tvl = tvlValue;
+      signals.push(scoreFundamental({ mcapToTvl }));
+    } else {
       // Not all tokens have TVL data, that's fine
       signals.push(scoreFundamental({}));
     }
 
-    // Shared research data — captured in steps 4 & 5, reused in step 6 strategies
+    // Shared research data — captured in phase 2, reused in phase 3 strategies
     let nansenData: any = undefined;
     let messariData: any = undefined;
 
-    // 4. Smart-money & on-chain data (via Nansen x402 when enabled)
+    // Phase 2: Parallel research data fetching (Nansen + Messari) if x402 enabled
     if (this.config.useX402) {
-      try {
-        const nansen = getResearchProvider("nansen");
-        const smResult = await nansen.query({ type: "smart-money", target: tokenId });
+      const [nansenResult, messariResult] = await Promise.allSettled([
+        // 4. Smart-money & on-chain data (via Nansen x402)
+        getResearchProvider("nansen").query({ type: "smart-money", target: tokenId }),
+
+        // 5. Fundamentals & events (via Messari x402)
+        getResearchProvider("messari").query({ type: "token", target: tokenId })
+      ]);
+
+      // Process Nansen results
+      if (nansenResult.status === 'fulfilled') {
+        const smResult = nansenResult.value;
         nansenData = smResult.data;
         const flows = smResult.data.flows as Array<Record<string, unknown>> | undefined;
         if (flows && flows.length > 0) {
@@ -173,19 +191,14 @@ export class TradingAgent {
           signals.push(scoreOnChain({}));
         }
         console.error(chalk.dim(`  x402 Nansen smart-money: cost ${smResult.costUsdc} USDC`));
-      } catch (err) {
-        console.error(chalk.dim(`  x402 Nansen smart-money unavailable: ${(err as Error).message} — using free data only`));
+      } else {
+        console.error(chalk.dim(`  x402 Nansen smart-money unavailable: ${nansenResult.reason} — using free data only`));
         signals.push(scoreOnChain({}));
       }
-    } else {
-      signals.push(scoreOnChain({}));
-    }
 
-    // 5. Fundamentals & events (via Messari x402 when enabled)
-    if (this.config.useX402) {
-      try {
-        const messari = getResearchProvider("messari");
-        const tokenResult = await messari.query({ type: "token", target: tokenId });
+      // Process Messari results
+      if (messariResult.status === 'fulfilled') {
+        const tokenResult = messariResult.value;
         messariData = tokenResult.data;
         const d = tokenResult.data as Record<string, unknown>;
         const metrics = d.metrics as Record<string, unknown> | undefined;
@@ -196,7 +209,7 @@ export class TradingAgent {
           ? Number((metrics as Record<string, unknown>).mcap_to_tvl ?? 0) || undefined
           : undefined;
 
-        // Remove any previously-pushed fundamental signal (from step 3 TVL) to avoid duplicates
+        // Remove any previously-pushed fundamental signal (from phase 1 TVL) to avoid duplicates
         const existingFundIdx = signals.findIndex(s => s.name === "fundamental");
         if (existingFundIdx >= 0) signals.splice(existingFundIdx, 1);
 
@@ -213,8 +226,8 @@ export class TradingAgent {
         signals.push(scoreEvent({ positiveEvent: hasPositiveCatalyst || undefined }));
 
         console.error(chalk.dim(`  x402 Messari token: cost ${tokenResult.costUsdc} USDC`));
-      } catch (err) {
-        console.error(chalk.dim(`  x402 Messari unavailable: ${(err as Error).message} — using free data only`));
+      } else {
+        console.error(chalk.dim(`  x402 Messari unavailable: ${messariResult.reason} — using free data only`));
         // Fall back: fundamental was already pushed from TVL above only if no TVL
         if (!signals.some(s => s.name === "fundamental")) {
           signals.push(scoreFundamental({}));
@@ -222,70 +235,68 @@ export class TradingAgent {
         signals.push(scoreEvent({}));
       }
     } else {
-      // Only push fundamental if not already pushed from TVL data (step 3)
+      // Only push fundamental if not already pushed from TVL data (phase 1)
       if (!signals.some(s => s.name === "fundamental")) {
         signals.push(scoreFundamental({}));
       }
       signals.push(scoreEvent({}));
     }
 
-    // 6. Run strategy modules for additional signals
+    // Phase 3: Parallel strategy data fetching (symbol, funding rate, unlocks)
     let marketData: any = undefined;
 
     try {
-      // Resolve token symbol from CoinGecko for accurate DEX search
+      const [symbolResult, fundingRateResult, unlockResult] = await Promise.allSettled([
+        // Resolve token symbol + get market data for strategies
+        this.coingecko.getCoinDetails(tokenId).then(async (coinDetails) => {
+          const symbol = coinDetails?.symbol?.toUpperCase();
+          const marketData = await this.coingecko.getMarketData(tokenId, 7);
+          return { symbol, marketData };
+        }),
+
+        // Fetch funding rate data (free, from Binance)
+        this.fundingRate.getFundingRate(tokenId),
+
+        // Fetch token unlock estimates (free, from DefiLlama FDV)
+        this.tokenUnlocks.getUnlocks(tokenId)
+      ]);
+
+      // Process symbol/market data results
       let tokenSymbol: string | undefined;
-      try {
-        const coinDetails = await this.coingecko.getCoinDetails(tokenId);
-        tokenSymbol = coinDetails?.symbol?.toUpperCase();
-        // Also get market data for strategies
-        marketData = await this.coingecko.getMarketData(tokenId, 7);
-      } catch {
-        // symbol resolution failed — strategies will fall back to static map
+      if (symbolResult.status === 'fulfilled' && symbolResult.value) {
+        tokenSymbol = symbolResult.value.symbol;
+        marketData = symbolResult.value.marketData;
       }
 
-      if (this.config.useX402) {
-        // Reuse research data already fetched in steps 4 & 5 above — no duplicate x402 calls
-      }
-
-      // Fetch funding rate data (free, from Binance)
+      // Process funding rate results
       let fundingRateData: StrategyContext['fundingRateData'] = undefined;
-      try {
-        const fr = await this.fundingRate.getFundingRate(tokenId);
-        if (fr) {
-          fundingRateData = { rate8h: fr.rate8h, annualizedRate: fr.annualizedRate, exchange: fr.exchange };
-        }
-      } catch {
-        // Funding rate fetch failed — strategies will handle gracefully
+      if (fundingRateResult.status === 'fulfilled' && fundingRateResult.value) {
+        const fr = fundingRateResult.value;
+        fundingRateData = { rate8h: fr.rate8h, annualizedRate: fr.annualizedRate, exchange: fr.exchange };
       }
 
-      // Fetch token unlock estimates (free, from DefiLlama FDV)
+      // Process unlock results
       let unlockData: StrategyContext['unlockData'] = undefined;
-      try {
-        const unlocks = await this.tokenUnlocks.getUnlocks(tokenId);
-        if (unlocks) {
-          unlockData = unlocks;
-        }
-      } catch {
-        // Unlock data fetch failed — strategies will handle gracefully
+      if (unlockResult.status === 'fulfilled' && unlockResult.value) {
+        unlockData = unlockResult.value;
       }
 
       const stratCtx: StrategyContext = {
         tokenId,
-        candles, // reuse from step 1
+        candles, // reuse from phase 1
         technicals: technicalSignals,
         fearAndGreed: fearAndGreedValue !== undefined
           ? { value: fearAndGreedValue, classification: fearAndGreedValue < 25 ? 'fear' : fearAndGreedValue > 75 ? 'greed' : 'neutral' }
           : undefined,
-        sentimentZScore, // reuse from step 2
+        sentimentZScore, // reuse from phase 1
         tvlData: tvl,
         marketData,
-        nansenData,
-        messariData,
+        nansenData, // from phase 2
+        messariData, // from phase 2
         dexData: undefined, // DexFlowStrategy fetches this internally
-        fundingRateData,
-        unlockData,
-        tokenSymbol,
+        fundingRateData, // from phase 3
+        unlockData, // from phase 3
+        tokenSymbol, // from phase 3
       };
 
       const strategySignals = await runStrategies(stratCtx, this.config.strategyConfigs);

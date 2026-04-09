@@ -374,6 +374,15 @@ export function computeTradeDecision(
     fundamental: w.fundamental,
     event: w.event,
     smartMoney: w.smartMoney,
+
+    // Strategy signal mappings to categories
+    breakoutOnChain: w.technical,
+    meanReversion: w.technical,
+    dexFlow: w.onchain,
+    fundingRate: w.fundamental,
+    tvlMomentum: w.fundamental,
+    sentimentContrarian: w.sentiment,
+    tokenUnlock: w.event,
   };
 
   // Weighted sum
