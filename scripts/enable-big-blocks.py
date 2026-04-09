@@ -40,6 +40,11 @@ def main():
 
     print(f"Result:  {result}")
 
+    if result.get("status") == "err":
+        print(f"\nFailed: {result.get('response', 'unknown error')}")
+        print("If 'User does not exist': deposit any amount on https://app.hyperliquid.xyz first.")
+        sys.exit(1)
+
     if enable:
         print("\nBig blocks enabled (30M gas limit).")
         print("You can now deploy large contracts on HyperEVM.")
