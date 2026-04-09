@@ -57,56 +57,43 @@ export class Backtester {
     const endMs = new Date(this.config.endDate).getTime();
     const totalDays = Math.ceil((endMs - startMs) / (24 * 60 * 60 * 1000));
 
-    // CoinGecko free OHLC only accepts specific values: 1, 7, 14, 30, 90, 180, 365, max
-    // For ranges > 180 days, fetch in 180-day chunks to avoid 400 errors
-    const VALID_DAYS = [1, 7, 14, 30, 90, 180];
-    const chunkSize = 180;
+    // Use market_chart endpoint (daily prices) — works for any range up to 365 days.
+    // OHLC endpoint only returns 12 candles for >30 day ranges on free tier.
+    const cgDays = Math.min(Math.max(totalDays, 1), 365);
+    const marketData = await this.cg.getMarketData(this.config.tokenId, cgDays);
 
-    let ohlcRaw: number[][] = [];
-    let marketData: any = null;
-
-    if (totalDays <= 180) {
-      // Single fetch — pick the smallest valid bucket that covers the range
-      const cgDays = VALID_DAYS.find((d) => d >= totalDays) ?? 180;
-      ohlcRaw = await this.cg.getOHLC(this.config.tokenId, cgDays);
-      marketData = await this.cg.getMarketData(this.config.tokenId, cgDays);
-    } else {
-      // Fetch in 180-day chunks
-      for (let chunkStart = startMs; chunkStart < endMs; chunkStart += chunkSize * 24 * 60 * 60 * 1000) {
-        const chunk = await this.cg.getOHLC(this.config.tokenId, chunkSize);
-        ohlcRaw.push(...chunk);
-      }
-      // Deduplicate by timestamp
-      const seen = new Set<number>();
-      ohlcRaw = ohlcRaw.filter((c) => {
-        if (seen.has(c[0]!)) return false;
-        seen.add(c[0]!);
-        return true;
-      });
-      marketData = await this.cg.getMarketData(this.config.tokenId, chunkSize);
+    if (!marketData?.prices?.length) {
+      throw new Error(`No price data returned from CoinGecko for ${this.config.tokenId}`);
     }
 
-    // Build candle array with volume
-    const allCandles: Candle[] = ohlcRaw
-      .filter((c: number[]) => c[0]! >= startMs && c[0]! <= endMs)
-      .map((c: number[]) => {
-        // Find nearest volume data
-        let volume = 0;
-        if (marketData?.total_volumes) {
-          const nearest = marketData.total_volumes.reduce(
-            (best: number[], v: number[]) =>
-              Math.abs(v[0]! - c[0]!) < Math.abs(best[0]! - c[0]!) ? v : best,
-            marketData.total_volumes[0]!,
-          );
-          volume = nearest[1] ?? 0;
-        }
+    // Build daily candles from market_chart prices + volumes
+    const prices: number[][] = marketData.prices;
+    const volumes: number[][] = marketData.total_volumes ?? [];
+
+    // Group prices by day to create OHLCV candles
+    const dayMap = new Map<string, { prices: number[]; volumes: number[]; timestamp: number }>();
+    for (const [ts, price] of prices) {
+      if (ts! < startMs || ts! > endMs) continue;
+      const dayKey = new Date(ts!).toISOString().slice(0, 10);
+      if (!dayMap.has(dayKey)) dayMap.set(dayKey, { prices: [], volumes: [], timestamp: ts! });
+      dayMap.get(dayKey)!.prices.push(price!);
+    }
+    for (const [ts, vol] of volumes) {
+      const dayKey = new Date(ts!).toISOString().slice(0, 10);
+      dayMap.get(dayKey)?.volumes.push(vol!);
+    }
+
+    const allCandles: Candle[] = [...dayMap.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([, day]) => {
+        const p = day.prices;
         return {
-          timestamp: c[0]!,
-          open: c[1]!,
-          high: c[2]!,
-          low: c[3]!,
-          close: c[4] ?? c[3]!,
-          volume,
+          timestamp: day.timestamp,
+          open: p[0]!,
+          high: Math.max(...p),
+          low: Math.min(...p),
+          close: p[p.length - 1]!,
+          volume: day.volumes.length > 0 ? day.volumes.reduce((a, b) => a + b, 0) / day.volumes.length : 0,
         };
       });
 
