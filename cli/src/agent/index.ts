@@ -99,8 +99,8 @@ export class TradingAgent {
     let candles: Candle[] | undefined;
     let sentimentZScore: number | undefined;
 
-    // Phase 1: Parallel basic data fetching (OHLC, Fear & Greed, TVL)
-    const [ohlcResult, fearGreedResult, tvlResult] = await Promise.allSettled([
+    // Phase 1: Parallel basic data fetching (OHLC, Fear & Greed, TVL, Hyperliquid)
+    const [ohlcResult, fearGreedResult, tvlResult, hyperliquidResult] = await Promise.allSettled([
       // 1. Fetch OHLC data from CoinGecko
       this.coingecko.getOHLC(tokenId, 30).then(async (ohlcRaw) => {
         if (!ohlcRaw || ohlcRaw.length <= 10) return null;
@@ -148,7 +148,10 @@ export class TradingAgent {
           return { tvl: tvlValue, mcapToTvl: mcap && tvlValue > 0 ? mcap / tvlValue : undefined };
         }
         return null;
-      })
+      }),
+
+      // 4. Fetch Hyperliquid data (free, exchange-native) — move to Phase 1 for price substitution
+      this.hyperliquid.getHyperliquidData(tokenId)
     ]);
 
     // Process OHLC results
@@ -171,10 +174,41 @@ export class TradingAgent {
       console.error(chalk.dim(`  Sentiment data failed: ${fearGreedResult.reason}`));
     }
 
-    // Process TVL results
+    // Process Hyperliquid results first to use for price substitution
+    let hyperliquidData: any = undefined;
+    if (hyperliquidResult.status === 'fulfilled' && hyperliquidResult.value) {
+      hyperliquidData = hyperliquidResult.value;
+    }
+
+    // Process TVL results — use Hyperliquid price if available instead of calling CoinGecko
     if (tvlResult.status === 'fulfilled' && tvlResult.value) {
-      const { tvl: tvlValue, mcapToTvl } = tvlResult.value;
+      const { tvl: tvlValue } = tvlResult.value;
       tvl = tvlValue;
+
+      // Calculate mcapToTvl ratio using Hyperliquid price if available
+      let mcapToTvl: number | undefined;
+      if (hyperliquidData?.markPrice) {
+        // Use Hyperliquid mark price instead of CoinGecko
+        try {
+          const coinDetails = await this.coingecko.getCoinDetails(tokenId);
+          const circSupply = coinDetails?.market_data?.circulating_supply;
+          if (circSupply) {
+            const mcap = hyperliquidData.markPrice * circSupply;
+            mcapToTvl = tvlValue > 0 ? mcap / tvlValue : undefined;
+          }
+        } catch {
+          // Fall back to original CoinGecko approach if coin details fail
+          const priceData = await this.coingecko.getPrice([tokenId], ["usd"]);
+          const mcap = priceData?.[tokenId]?.usd_market_cap;
+          mcapToTvl = mcap && tvlValue > 0 ? mcap / tvlValue : undefined;
+        }
+      } else {
+        // Fall back to CoinGecko price
+        const priceData = await this.coingecko.getPrice([tokenId], ["usd"]);
+        const mcap = priceData?.[tokenId]?.usd_market_cap;
+        mcapToTvl = mcap && tvlValue > 0 ? mcap / tvlValue : undefined;
+      }
+
       signals.push(scoreFundamental({ mcapToTvl }));
     } else {
       // Not all tokens have TVL data, that's fine
@@ -266,7 +300,7 @@ export class TradingAgent {
     let marketData: any = undefined;
 
     try {
-      const [symbolResult, fundingRateResult, unlockResult, twitterResult, hyperliquidResult] = await Promise.allSettled([
+      const [symbolResult, fundingRateResult, unlockResult, twitterResult] = await Promise.allSettled([
         // Resolve token symbol + get market data for strategies
         this.coingecko.getCoinDetails(tokenId).then(async (coinDetails) => {
           const symbol = coinDetails?.symbol?.toUpperCase();
@@ -281,10 +315,7 @@ export class TradingAgent {
         this.tokenUnlocks.getUnlocks(tokenId),
 
         // Fetch Twitter sentiment data (free tier with auth)
-        this.twitter.getSentiment(tokenId),
-
-        // Fetch Hyperliquid data (free, exchange-native data)
-        this.hyperliquid.getHyperliquidData(tokenId)
+        this.twitter.getSentiment(tokenId)
       ]);
 
       // Process symbol/market data results
@@ -315,13 +346,7 @@ export class TradingAgent {
         console.error(chalk.dim(`  Twitter sentiment failed: ${twitterResult.reason}`));
       }
 
-      // Process Hyperliquid results
-      let hyperliquidData: StrategyContext['hyperliquidData'] = undefined;
-      if (hyperliquidResult.status === 'fulfilled' && hyperliquidResult.value) {
-        hyperliquidData = hyperliquidResult.value;
-      } else if (hyperliquidResult.status === 'rejected') {
-        console.error(chalk.dim(`  Hyperliquid data failed: ${hyperliquidResult.reason}`));
-      }
+      // Hyperliquid data already processed in Phase 1
 
       const stratCtx: StrategyContext = {
         tokenId,
