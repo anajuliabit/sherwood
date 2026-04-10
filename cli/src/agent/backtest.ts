@@ -157,7 +157,7 @@ export class Backtester {
       const fgData = await this.sentimentProvider.getFearAndGreed();
       for (const entry of fgData) {
         // Convert timestamp to date string and store
-        const date = new Date(entry.timestamp * 1000).toISOString().split('T')[0]!;
+        const date = new Date(Number(entry.timestamp) * 1000).toISOString().split('T')[0]!;
         fearAndGreedData[date] = entry.value;
       }
       if (this.config.verbose && Object.keys(fearAndGreedData).length > 0) {

@@ -4,7 +4,7 @@
  * Rate limit: 10 requests/min, 100 tweets/request (Recent Search free tier).
  */
 
-import { createHash, createHmac, randomBytes } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
@@ -314,7 +314,6 @@ export class TwitterSentimentProvider {
       // Calculate weighted sentiment metrics
       const bullishTweets = allResults.filter(r => r.sentiment === 'BULLISH');
       const bearishTweets = allResults.filter(r => r.sentiment === 'BEARISH');
-      const neutralTweets = allResults.filter(r => r.sentiment === 'NEUTRAL');
 
       const totalTweets = allResults.length;
       const llmBullishPercent = (bullishTweets.length / totalTweets) * 100;

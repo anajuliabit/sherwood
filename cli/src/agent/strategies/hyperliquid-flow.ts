@@ -31,7 +31,7 @@ export class HyperliquidFlowStrategy implements Strategy {
 
     const signals = [
       this.analyzeFundingRate(hlData.fundingRate),
-      this.analyzeOIPriceDivergence(hlData.oiChange24h, hlData.markPrice, hlData.prevDayPrice),
+      this.analyzeOIPriceDivergence(hlData.oiChangePct, hlData.markPrice, hlData.prevDayPrice),
       this.analyzeOrderBookImbalance(hlData.orderBookImbalance),
       this.analyzeWhaleFlow(hlData.largeTradesBias),
     ];
@@ -108,37 +108,37 @@ export class HyperliquidFlowStrategy implements Strategy {
   }
 
   /** Analyze OI + price divergence patterns. */
-  private analyzeOIPriceDivergence(oiChange24h: number, markPrice: number, prevDayPrice: number): { value: number; details: string } {
+  private analyzeOIPriceDivergence(oiChangePct: number, markPrice: number, prevDayPrice: number): { value: number; details: string } {
     const priceChange = ((markPrice - prevDayPrice) / prevDayPrice) * 100;
-    const oiRising = oiChange24h > 1; // >1% OI increase
-    const oiFalling = oiChange24h < -1; // >1% OI decrease
+    const oiRising = oiChangePct > 1; // >1% OI increase
+    const oiFalling = oiChangePct < -1; // >1% OI decrease
     const priceRising = priceChange > 1; // >1% price increase
     const priceFalling = priceChange < -1; // >1% price decrease
 
     if (oiRising && priceRising) {
       return {
         value: 0.6,
-        details: `OI+${oiChange24h.toFixed(1)}% Price+${priceChange.toFixed(1)}%: strong trend → bullish`,
+        details: `OI+${oiChangePct.toFixed(1)}% Price+${priceChange.toFixed(1)}%: strong trend → bullish`,
       };
     } else if (oiRising && priceFalling) {
       return {
         value: 0.3,
-        details: `OI+${oiChange24h.toFixed(1)}% Price${priceChange.toFixed(1)}%: shorts building → potential squeeze`,
+        details: `OI+${oiChangePct.toFixed(1)}% Price${priceChange.toFixed(1)}%: shorts building → potential squeeze`,
       };
     } else if (oiFalling && priceRising) {
       return {
         value: -0.3,
-        details: `OI${oiChange24h.toFixed(1)}% Price+${priceChange.toFixed(1)}%: weak rally → potential trap`,
+        details: `OI${oiChangePct.toFixed(1)}% Price+${priceChange.toFixed(1)}%: weak rally → potential trap`,
       };
     } else if (oiFalling && priceFalling) {
       return {
         value: 0.2,
-        details: `OI${oiChange24h.toFixed(1)}% Price${priceChange.toFixed(1)}%: capitulation → potential bottom`,
+        details: `OI${oiChangePct.toFixed(1)}% Price${priceChange.toFixed(1)}%: capitulation → potential bottom`,
       };
     } else {
       return {
         value: 0.0,
-        details: `OI${oiChange24h.toFixed(1)}% Price${priceChange.toFixed(1)}%: no clear divergence`,
+        details: `OI${oiChangePct.toFixed(1)}% Price${priceChange.toFixed(1)}%: no clear divergence`,
       };
     }
   }

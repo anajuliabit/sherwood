@@ -47,7 +47,7 @@ export interface StrategyContext {
   hyperliquidData?: {         // from Hyperliquid (free, native exchange data)
     fundingRate: number;
     openInterest: number;
-    oiChange24h: number;
+    oiChangePct: number;
     volume24h: number;
     markPrice: number;
     oraclePrice: number;

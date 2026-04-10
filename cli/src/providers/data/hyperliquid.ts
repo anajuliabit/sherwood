@@ -43,7 +43,7 @@ const TOKEN_TO_COIN: Record<string, string> = {
 export interface HyperliquidData {
   fundingRate: number;          // current 8h funding rate
   openInterest: number;         // USD value
-  oiChange24h: number;          // OI now vs 24h ago (percentage)
+  oiChangePct: number;          // OI change since last fetch (percentage, NOT 24h)
   volume24h: number;            // 24h notional volume
   markPrice: number;
   oraclePrice: number;
@@ -135,7 +135,7 @@ export class HyperliquidProvider {
       // OI change since last fetch (NOT 24h — in-memory cache resets on restart).
       // For true 24h change, would need historical snapshots on disk.
       const prevOI = this.oiCache.get(coin) ?? openInterest;
-      const oiChange24h = prevOI > 0 ? ((openInterest - prevOI) / prevOI) * 100 : 0;
+      const oiChangePct = prevOI > 0 ? ((openInterest - prevOI) / prevOI) * 100 : 0;
       this.oiCache.set(coin, openInterest);
 
       // Process order book imbalance
@@ -153,7 +153,7 @@ export class HyperliquidProvider {
       const data: HyperliquidData = {
         fundingRate,
         openInterest,
-        oiChange24h,
+        oiChangePct,
         volume24h,
         markPrice,
         oraclePrice,
