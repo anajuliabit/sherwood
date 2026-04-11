@@ -5,7 +5,7 @@ import SiteFooter from "@/components/SiteFooter";
 import SyndicateClient from "@/components/SyndicateClient";
 import { resolveSyndicateBySubdomain } from "@/lib/syndicate-data";
 import AttestationTimeline from "@/components/AttestationTimeline";
-import { truncateAddress } from "@/lib/contracts";
+import { truncateAddress, getAddresses } from "@/lib/contracts";
 
 export async function generateMetadata({
   params,
@@ -43,6 +43,7 @@ export default async function AgentsPage({
     agentNames[agent.agentId.toString()] = displayName;
   }
   const creatorKey = data.creator.toLowerCase();
+  const hasIdentityRegistry = getAddresses(data.chainId).identityRegistry !== "0x0000000000000000000000000000000000000000";
 
   return (
     <>
@@ -73,6 +74,7 @@ export default async function AgentsPage({
             assetDecimals={data.assetDecimals}
             assetSymbol={data.assetSymbol}
             activeTab="agents"
+            hideAgentsTab={!hasIdentityRegistry}
           />
 
           {/* Stats bar */}
@@ -189,8 +191,8 @@ export default async function AgentsPage({
                       <span>{truncateAddress(agent.agentAddress)}</span>
                     </div>
 
-                    {/* Agent attestation history */}
-                    {agentAttestations.length > 0 && (
+                    {/* Agent attestation history (only on chains with EAS support) */}
+                    {getAddresses(data.chainId).easExplorer && agentAttestations.length > 0 && (
                       <div style={{ marginTop: "1rem", borderTop: "1px solid var(--color-border)", paddingTop: "1rem" }}>
                         <AttestationTimeline
                           attestations={agentAttestations}

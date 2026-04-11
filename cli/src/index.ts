@@ -486,12 +486,19 @@ syndicate
 
 syndicate
   .command("info")
-  .description("Display syndicate details by ID")
-  .argument("<id>", "Syndicate ID")
+  .description("Display syndicate details by ID or subdomain")
+  .argument("<id>", "Syndicate ID or subdomain name")
   .action(async (idStr) => {
     const spinner = ora("Loading syndicate info...").start();
     try {
-      const id = BigInt(idStr);
+      let id: bigint;
+      if (/^\d+$/.test(idStr)) {
+        id = BigInt(idStr);
+      } else {
+        // Resolve subdomain to syndicate ID
+        const resolved = await resolveSyndicate(idStr);
+        id = resolved.id;
+      }
       const info = await factoryLib.getSyndicate(id);
       spinner.stop();
 
@@ -513,6 +520,14 @@ syndicate
       console.log(`  Active:     ${info.active ? chalk.green("yes") : chalk.red("no")}`);
       if (info.metadataURI) {
         console.log(`  Metadata:   ${chalk.dim(info.metadataURI)}`);
+      }
+
+      // Show XMTP group ID if cached
+      if (info.subdomain) {
+        const xmtpGroupId = getCachedGroupId(info.subdomain);
+        if (xmtpGroupId) {
+          console.log(`  XMTP Group: ${chalk.cyan(xmtpGroupId)}`);
+        }
       }
 
       // Also show vault info
@@ -624,7 +639,7 @@ syndicate
   .command("add")
   .description("Register an agent on a syndicate vault (creator only)")
   .option("--vault <address>", "Vault address (default: from config)")
-  .requiredOption("--agent-id <id>", "Agent's ERC-8004 identity token ID")
+  .option("--agent-id <id>", "Agent's ERC-8004 identity token ID (resolved from wallet if omitted)")
   .requiredOption("--wallet <address>", "Agent wallet address")
   .action(async (opts) => {
     const spinner = ora("Verifying creator...").start();
@@ -642,11 +657,61 @@ syndicate
       }
 
       const agentWallet = validateAddress(opts.wallet, "wallet");
+
+      // Resolve agent ID: use --agent-id if provided, otherwise look up from wallet
+      let agentId: bigint;
+      if (opts.agentId) {
+        agentId = BigInt(opts.agentId);
+      } else {
+        const { AGENT_REGISTRY } = await import("./lib/addresses.js");
+        const registry = AGENT_REGISTRY().IDENTITY_REGISTRY;
+
+        // Chains without ERC-8004 (e.g. HyperEVM) — contract skips identity check
+        if (registry === "0x0000000000000000000000000000000000000000") {
+          agentId = 0n;
+        } else {
+          spinner.text = "Looking up ERC-8004 identity from wallet...";
+          const client = getPublicClient();
+
+          const balance = await client.readContract({
+            address: registry,
+            abi: [{
+              name: "balanceOf",
+              type: "function",
+              stateMutability: "view",
+              inputs: [{ name: "owner", type: "address" }],
+              outputs: [{ name: "", type: "uint256" }],
+            }] as const,
+            functionName: "balanceOf",
+            args: [agentWallet],
+          }) as bigint;
+
+          if (balance === 0n) {
+            spinner.fail("Agent wallet does not own an ERC-8004 identity NFT");
+            console.error(chalk.dim("  Mint one first: sherwood identity mint --name <name>"));
+            process.exit(1);
+          }
+
+          const tokenId = await client.readContract({
+            address: registry,
+            abi: [{
+              name: "tokenOfOwnerByIndex",
+              type: "function",
+              stateMutability: "view",
+              inputs: [{ name: "owner", type: "address" }, { name: "index", type: "uint256" }],
+              outputs: [{ name: "", type: "uint256" }],
+            }] as const,
+            functionName: "tokenOfOwnerByIndex",
+            args: [agentWallet, 0n],
+          }) as bigint;
+
+          agentId = tokenId;
+          console.log(chalk.dim(`  Resolved agent ID: #${agentId}`));
+        }
+      }
+
       spinner.text = "Registering agent...";
-      const hash = await vaultLib.registerAgent(
-        BigInt(opts.agentId),
-        agentWallet,
-      );
+      const hash = await vaultLib.registerAgent(agentId, agentWallet);
       spinner.succeed(`Agent registered: ${hash}`);
       console.log(chalk.dim(`  ${getExplorerUrl(hash)}`));
 
@@ -658,7 +723,7 @@ syndicate
         await xmtp.addMember(group, opts.wallet);
         await xmtp.sendEnvelope(group, {
           type: "AGENT_REGISTERED",
-          agent: { erc8004Id: Number(opts.agentId), address: opts.wallet },
+          agent: { erc8004Id: Number(agentId), address: opts.wallet },
           syndicate: subdomain,
           timestamp: Math.floor(Date.now() / 1000),
         });
@@ -1418,6 +1483,7 @@ configCmd
   .option("--notify-to <id>", "Destination for cron summaries (Telegram chat ID, phone, etc.)")
   .option("--uniswap-api-key <key>", "Uniswap Trading API key (from developers.uniswap.org)")
   .option("--venice-api-key <key>", "Venice AI inference API key")
+  .option("--xmtp-group <subdomain:groupId>", "Cache an XMTP group ID for a syndicate (e.g. my-fund:abc123)")
   .action((opts) => {
     let saved = false;
 
@@ -1464,8 +1530,20 @@ configCmd
       saved = true;
     }
 
+    if (opts.xmtpGroup) {
+      const parts = opts.xmtpGroup.split(":");
+      if (parts.length !== 2 || !parts[0] || !parts[1]) {
+        console.log(chalk.red("Format: --xmtp-group <subdomain>:<groupId>"));
+        process.exit(1);
+      }
+      cacheGroupId(parts[0], parts[1]);
+      console.log(chalk.green(`XMTP group ID cached for ${parts[0]}`));
+      console.log(chalk.dim(`  Group ID: ${parts[1]}`));
+      saved = true;
+    }
+
     if (!saved) {
-      console.log(chalk.red("Provide at least one of: --private-key, --vault, --rpc, --notify-to, --uniswap-api-key, --venice-api-key"));
+      console.log(chalk.red("Provide at least one of: --private-key, --vault, --rpc, --notify-to, --uniswap-api-key, --venice-api-key, --xmtp-group"));
       process.exit(1);
     }
   });
@@ -1490,6 +1568,17 @@ configCmd
     console.log(`  Vault:      ${contracts.vault ?? chalk.dim("not set")}`);
     console.log(`  Uniswap:    ${getUniswapApiKey() ? chalk.green("API key configured") : chalk.dim("not set")}`);
     console.log(`  Venice:     ${getVeniceApiKey() ? chalk.green("API key configured") : chalk.dim("not set")}`);
+
+    // Show XMTP group IDs
+    const groupEntries = Object.entries(config.groupCache || {}).filter(([, v]) => v);
+    if (groupEntries.length > 0) {
+      console.log();
+      console.log(chalk.bold("  XMTP Groups"));
+      for (const [sub, gid] of groupEntries) {
+        console.log(`    ${sub}: ${chalk.cyan(gid)}`);
+      }
+    }
+
     console.log();
     console.log(chalk.dim("  Config file: ~/.sherwood/config.json"));
     console.log();

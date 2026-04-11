@@ -58,6 +58,7 @@ export interface AgentInfo {
 export interface SyndicateMetadata {
   name: string;
   description: string;
+  xmtpGroupId?: string;
   strategies: {
     id: string;
     name: string;
@@ -391,13 +392,16 @@ async function resolveOnChain(
   }
 
   // Step 4: Parallel off-chain reads
-  const [metadata, xmtpGroupId, attestations, activity, equityCurve] = await Promise.all([
+  const [metadata, ensGroupId, attestations, activity, equityCurve] = await Promise.all([
     fetchMetadata(metadataURI),
     fetchXmtpGroupId(chainId, subdomain, addresses.l2Registry),
     fetchSyndicateAttestations(creator, syndicateId, chainId, vault),
     fetchStrategyActivity(entry.subgraphUrl, syndicateId.toString()),
     fetchEquityCurve(entry.subgraphUrl, syndicateId.toString(), assetDecimals, effectiveTotalAssets),
   ]);
+
+  // XMTP group ID: ENS text record → IPFS metadata fallback
+  const xmtpGroupId = ensGroupId || metadata?.xmtpGroupId || null;
 
   // Format display values based on asset
   const isUSD = assetSymbol === "USDC" || assetSymbol === "USDT";

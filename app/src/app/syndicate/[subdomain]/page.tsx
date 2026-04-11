@@ -11,6 +11,7 @@ import VaultOverview from "@/components/VaultOverview";
 import AgentRoster from "@/components/AgentRoster";
 import AttestationTimeline from "@/components/AttestationTimeline";
 import LiveFeed from "@/components/LiveFeed";
+import { getAddresses } from "@/lib/contracts";
 import StrategyActivity from "@/components/StrategyActivity";
 import ReferralBanner from "@/components/ReferralBanner";
 import { resolveSyndicateBySubdomain } from "@/lib/syndicate-data";
@@ -50,6 +51,9 @@ export default async function SyndicateDetailPage({
     addressNames[agent.agentAddress.toLowerCase()] = displayName;
   }
   const creatorKey = data.creator.toLowerCase();
+  const chainAddrs = getAddresses(data.chainId);
+  const hasIdentityRegistry = chainAddrs.identityRegistry !== "0x0000000000000000000000000000000000000000";
+  const hasEAS = !!chainAddrs.easExplorer;
 
   return (
     <>
@@ -81,6 +85,7 @@ export default async function SyndicateDetailPage({
             assetDecimals={data.assetDecimals}
             assetSymbol={data.assetSymbol}
             activeTab="vault"
+            hideAgentsTab={!hasIdentityRegistry}
           />
 
           {/* Referral banner — shown when visitor arrives via ?ref=<agentId> */}
@@ -127,7 +132,7 @@ export default async function SyndicateDetailPage({
 
           {/* Dashboard grid */}
           <div className="grid-dashboard">
-            {/* Top-left: Vault Configuration */}
+            {/* Vault Configuration */}
             <VaultOverview
               openDeposits={data.openDeposits}
               totalSupply={data.totalSupply}
@@ -137,14 +142,27 @@ export default async function SyndicateDetailPage({
               assetDecimals={data.assetDecimals}
             />
 
-            {/* Top-right: Agent Roster */}
-            <AgentRoster agents={data.agents} />
+            {/* Agent Roster (only on chains with ERC-8004) — or LiveFeed side-by-side when no ERC-8004 and no EAS */}
+            {hasIdentityRegistry ? (
+              <AgentRoster agents={data.agents} />
+            ) : !hasEAS ? (
+              <LiveFeed groupId={data.xmtpGroupId ?? undefined} addressNames={addressNames} />
+            ) : null}
 
-            {/* Bottom-left: Attestation Timeline */}
-            <AttestationTimeline attestations={data.attestations} agentNames={agentNames} addressNames={addressNames} />
+            {/* Attestation + Agent comms row (only on chains with EAS) */}
+            {hasEAS && (
+              <>
+                <AttestationTimeline attestations={data.attestations} agentNames={agentNames} addressNames={addressNames} />
+                <LiveFeed groupId={data.xmtpGroupId ?? undefined} addressNames={addressNames} />
+              </>
+            )}
 
-            {/* Bottom-right: Agent comms */}
-            <LiveFeed groupId={data.xmtpGroupId ?? undefined} addressNames={addressNames} />
+            {/* LiveFeed full-width when we have ERC-8004 but no EAS */}
+            {hasIdentityRegistry && !hasEAS && (
+              <div style={{ gridColumn: "1 / -1" }}>
+                <LiveFeed groupId={data.xmtpGroupId ?? undefined} addressNames={addressNames} />
+              </div>
+            )}
           </div>
 
           {/* Equity curve + Strategy activity */}
