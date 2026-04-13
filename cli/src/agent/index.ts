@@ -18,6 +18,7 @@ import {
   scoreEvent,
   computeTradeDecision,
   DEFAULT_WEIGHTS,
+  profileForToken,
 } from "./scoring.js";
 import type { Signal, ScoringWeights, TradeDecision } from "./scoring.js";
 import { runStrategies } from "./strategies/index.js";
@@ -25,6 +26,10 @@ import { DexScreenerProvider } from "../providers/data/dexscreener.js";
 import { FundingRateProvider } from "../providers/data/funding-rate.js";
 import { TokenUnlocksProvider } from "../providers/data/token-unlocks.js";
 import { TwitterSentimentProvider } from "../providers/data/twitter.js";
+import { logSignal } from "./signal-logger.js";
+import { SignalSmoother, FileSmootherStorage, DEFAULT_SMOOTHER_CONFIG } from "./signal-smoother.js";
+import { join as joinPath } from "node:path";
+import { homedir as getHomedir } from "node:os";
 import { HyperliquidProvider } from "../providers/data/hyperliquid.js";
 import type { StrategyContext, StrategyConfig } from "./strategies/index.js";
 import { MarketRegimeDetector } from "./regime.js";
@@ -43,8 +48,16 @@ export interface AgentConfig {
   maxPositionPct: number;
   maxRiskPct: number;
   weights?: ScoringWeights;
+  /** Named weight profile (default | majors | altcoin | sentHeavy | techHeavy).
+   *  When set, overrides `weights` and is applied per-token via profileForToken().
+   *  When unset, BTC/ETH/SOL auto-get the "majors" profile, others use default. */
+  weightProfile?: string;
   /** When true, includes paid x402 data (Nansen smart-money, Messari fundamentals) in analysis. */
   useX402?: boolean;
+  /** When true, smooth fast/noisy signals (HL flow, smartMoney, dexFlow, fundingRate)
+   *  with a rolling 3-reading average before scoring. Reduces single-scan flicker.
+   *  Default false. */
+  smoothFastSignals?: boolean;
   /** Per-strategy configuration overrides. */
   strategyConfigs?: Record<string, StrategyConfig>;
 }
@@ -74,6 +87,7 @@ export class TradingAgent {
   private regimeDetector: MarketRegimeDetector;
   private correlationGuard: CorrelationGuard;
   private alertSystem: AlertSystem;
+  private smoother: SignalSmoother | null = null;
 
   constructor(config: AgentConfig) {
     this.config = config;
@@ -300,7 +314,10 @@ export class TradingAgent {
     let marketData: any = undefined;
 
     try {
-      const [symbolResult, fundingRateResult, unlockResult, twitterResult] = await Promise.allSettled([
+      // Twitter sentiment fetch removed — API returns 402 (paid tier required)
+      // for most token queries and was spamming logs without producing usable
+      // signal. TwitterSentimentStrategy is also disabled in DEFAULT_STRATEGIES.
+      const [symbolResult, fundingRateResult, unlockResult] = await Promise.allSettled([
         // Resolve token symbol + get market data for strategies
         this.coingecko.getCoinDetails(tokenId).then(async (coinDetails) => {
           const symbol = coinDetails?.symbol?.toUpperCase();
@@ -313,9 +330,6 @@ export class TradingAgent {
 
         // Fetch token unlock estimates (free, from DefiLlama FDV)
         this.tokenUnlocks.getUnlocks(tokenId),
-
-        // Fetch Twitter sentiment data (free tier with auth)
-        this.twitter.getSentiment(tokenId)
       ]);
 
       // Process symbol/market data results
@@ -325,9 +339,17 @@ export class TradingAgent {
         marketData = symbolResult.value.marketData;
       }
 
-      // Process funding rate results
+      // Process funding rate — prefer Hyperliquid (native, same venue we trade on).
+      // Fall back to Binance only if HL doesn't cover this token.
+      // HL publishes hourly funding; convert to 8h-equivalent so strategy
+      // thresholds remain unit-consistent with Binance.
       let fundingRateData: StrategyContext['fundingRateData'] = undefined;
-      if (fundingRateResult.status === 'fulfilled' && fundingRateResult.value) {
+      if (hyperliquidData && typeof hyperliquidData.fundingRate === 'number' && Number.isFinite(hyperliquidData.fundingRate)) {
+        const rate1h = hyperliquidData.fundingRate;
+        const rate8h = rate1h * 8;
+        const annualizedRate = rate1h * 24 * 365;
+        fundingRateData = { rate8h, annualizedRate, exchange: 'hyperliquid' };
+      } else if (fundingRateResult.status === 'fulfilled' && fundingRateResult.value) {
         const fr = fundingRateResult.value;
         fundingRateData = { rate8h: fr.rate8h, annualizedRate: fr.annualizedRate, exchange: fr.exchange };
       }
@@ -338,13 +360,8 @@ export class TradingAgent {
         unlockData = unlockResult.value;
       }
 
-      // Process Twitter results
-      let twitterData: StrategyContext['twitterData'] = undefined;
-      if (twitterResult.status === 'fulfilled' && twitterResult.value) {
-        twitterData = twitterResult.value;
-      } else if (twitterResult.status === 'rejected') {
-        console.error(chalk.dim(`  Twitter sentiment failed: ${twitterResult.reason}`));
-      }
+      // Twitter data omitted — strategy disabled (see DEFAULT_STRATEGIES).
+      const twitterData: StrategyContext['twitterData'] = undefined;
 
       // Hyperliquid data already processed in Phase 1
 
@@ -368,7 +385,24 @@ export class TradingAgent {
         tokenSymbol, // from phase 3
       };
 
-      const strategySignals = await runStrategies(stratCtx, this.config.strategyConfigs);
+      let strategySignals = await runStrategies(stratCtx, this.config.strategyConfigs);
+
+      // Smooth fast/noisy signals (HL flow, smartMoney, dexFlow, fundingRate)
+      // with a rolling 3-reading average. Slow signals pass through unchanged.
+      // Disabled by default — enable via --smooth flag or config.smoothFastSignals.
+      if (this.config.smoothFastSignals) {
+        if (!this.smoother) {
+          this.smoother = new SignalSmoother(
+            new FileSmootherStorage(joinPath(getHomedir(), '.sherwood', 'agent', 'signal-cache.json')),
+            DEFAULT_SMOOTHER_CONFIG,
+          );
+        }
+        try {
+          strategySignals = await this.smoother.smooth(tokenId, strategySignals);
+        } catch (err) {
+          console.error(chalk.dim(`  Signal smoothing failed (using raw): ${(err as Error).message}`));
+        }
+      }
 
       // Merge strategy signals: only add those with meaningful confidence (>0.05)
       for (const sig of strategySignals) {
@@ -415,21 +449,35 @@ export class TradingAgent {
       console.error(chalk.dim(`  Correlation check failed: ${(err as Error).message}`));
     }
 
-    // 8. Compute decision with regime adjustments and correlation suppression
+    // 8. Compute decision with regime adjustments, correlation suppression,
+    //    and regime-conditional action thresholds. Weights resolution order:
+    //    explicit this.config.weights > weightProfile > per-token auto-profile.
+    const resolvedWeights = this.config.weights
+      ?? profileForToken(tokenId, this.config.weightProfile);
     const decision = computeTradeDecision(
       signals,
-      this.config.weights ?? DEFAULT_WEIGHTS,
+      resolvedWeights,
       regimeAnalysis?.strategyAdjustments,
-      correlationCheck
+      correlationCheck,
+      regimeAnalysis?.regime,
     );
 
-    return {
+    const result: TokenAnalysis = {
       token: tokenId,
       decision,
       data: { technicalSignals, fearAndGreed: fearAndGreedValue, tvl },
       regime: regimeAnalysis,
       correlation: correlationCheck,
     };
+
+    // Persist analysis to ~/.sherwood/agent/signal-history.jsonl so the
+    // signal-audit tool can measure fire rates over time. Fire-and-forget —
+    // never blocks scoring, never crashes on disk failure.
+    const currentPrice = hyperliquidData?.markPrice
+      ?? (candles && candles.length > 0 ? candles[candles.length - 1]!.close : 0);
+    logSignal(result, currentPrice, resolvedWeights);
+
+    return result;
   }
 
   /** Update the token watchlist without recreating the agent (preserves caches). */

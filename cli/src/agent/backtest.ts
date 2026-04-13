@@ -11,6 +11,9 @@ import { runStrategies } from './strategies/index.js';
 import type { StrategyContext } from './strategies/types.js';
 import { computeTradeDecision } from './scoring.js';
 import type { TradeDecision } from './scoring.js';
+import { MarketRegimeDetector } from './regime.js';
+import type { MarketRegime } from './regime.js';
+import { SignalSmoother, MemorySmootherStorage, DEFAULT_SMOOTHER_CONFIG } from './signal-smoother.js';
 
 export interface BacktestConfig {
   tokenId: string;
@@ -20,6 +23,25 @@ export interface BacktestConfig {
   strategies: string[]; // strategy names to test
   cycle: '1h' | '4h' | '1d';
   verbose?: boolean;   // show detailed decision logs
+  /** When true, classify regime per-candle and apply regime-conditional thresholds.
+   *  Default false → flat ±0.3/±0.6 thresholds (matches old backtest behavior). */
+  useRegime?: boolean;
+  /** Trailing-stop percent (e.g. 0.05 = 5%). When set and a long position
+   *  exists, exit if price drops trailingStopPct from the high-water mark
+   *  since entry. Independent of SELL signal — stops fire first if hit.
+   *  Default undefined → SELL-signal-only exit. */
+  trailingStopPct?: number;
+  /** When true, smooth fast/noisy signals with rolling window (in-memory
+   *  per-simulation, no disk IO). Default false. */
+  smoothFastSignals?: boolean;
+  /** Override scoring weights (for calibration sweeps). */
+  customWeights?: import('./scoring.js').ScoringWeights;
+  /** Override BUY threshold (applied symmetrically to STRONG_BUY as buy+0.3).
+   *  Used by calibrator to sweep threshold values. When set, takes precedence
+   *  over regime-based thresholds. */
+  buyThreshold?: number;
+  /** Override SELL threshold (applied symmetrically to STRONG_SELL as sell-0.3). */
+  sellThreshold?: number;
 }
 
 export interface BacktestTrade {
@@ -52,6 +74,12 @@ export interface WalkForwardConfig {
   stepSize: number;        // e.g. 30 days (how much to advance each fold)
   capital: number;
   strategies: string[];
+  /** Forwarded to per-fold Backtester. Default false. */
+  useRegime?: boolean;
+  /** Forwarded to per-fold Backtester. Default undefined (no trailing stop). */
+  trailingStopPct?: number;
+  /** Forwarded to per-fold Backtester. Default false. */
+  smoothFastSignals?: boolean;
 }
 
 export interface WalkForwardResult {
@@ -92,6 +120,16 @@ export class Backtester {
 
   /** Run backtest using historical data from CoinGecko. */
   async run(): Promise<BacktestResult> {
+    const data = await this.fetchData();
+    return this.simulate(data.candles, data.fearAndGreedData);
+  }
+
+  /**
+   * Fetch historical OHLC + Fear & Greed data for the configured token/date range.
+   * Extracted so callers (e.g. the calibrator) can fetch once and replay many
+   * configurations against the same dataset without re-hitting CoinGecko.
+   */
+  async fetchData(): Promise<{ candles: Candle[]; fearAndGreedData: Record<string, number> }> {
     // 1. Fetch historical OHLC data
     const startMs = new Date(this.config.startDate).getTime();
     const endMs = new Date(this.config.endDate).getTime();
@@ -169,6 +207,18 @@ export class Backtester {
       }
     }
 
+    return { candles: allCandles, fearAndGreedData };
+  }
+
+  /**
+   * Run the simulation loop on pre-fetched data. Pure of network IO.
+   * The calibrator uses this directly after fetchData() to replay many
+   * config permutations without re-fetching per permutation.
+   */
+  async simulate(
+    allCandles: Candle[],
+    fearAndGreedData: Record<string, number>,
+  ): Promise<BacktestResult> {
     // 2. Determine step size based on cycle
     const stepSize = this.config.cycle === '1h' ? 1 : this.config.cycle === '4h' ? 4 : 24;
     // CoinGecko OHLC for 90+ days gives daily candles, so step = 1 candle for '1d'
@@ -176,7 +226,13 @@ export class Backtester {
 
     // 3. Simulate trading
     let capital = this.config.initialCapital;
-    let position: { entryPrice: number; entryDate: string; signal: string } | null = null;
+    let position: { entryPrice: number; entryDate: string; signal: string; highWaterMark: number } | null = null;
+    // Per-simulation in-memory smoother (no disk IO). Maintains rolling
+    // buffers across candles so smoothing reflects the same window logic
+    // as live runs.
+    const smoother = this.config.smoothFastSignals
+      ? new SignalSmoother(new MemorySmootherStorage(), DEFAULT_SMOOTHER_CONFIG)
+      : null;
     const trades: BacktestTrade[] = [];
     const equityCurve: Array<{ date: string; value: number }> = [];
     const returns: number[] = [];
@@ -238,7 +294,13 @@ export class Backtester {
         };
 
         // Run strategies — filter to candle-based only for backtest
-        const signals = await runStrategies(ctx);
+        let signals = await runStrategies(ctx);
+
+        // Optional smoothing — uses per-simulation in-memory buffer so each
+        // candle adds to a rolling window matching live behavior.
+        if (smoother) {
+          signals = await smoother.smooth(this.config.tokenId, signals, currentCandle.timestamp);
+        }
 
         // Filter strategies: if user specified strategies, honor their choice
         // Otherwise, filter to candle-based strategies only
@@ -254,7 +316,50 @@ export class Backtester {
                                           (fearAndGreed && s.name === 'sentimentContrarian'));
         }
 
-        decision = computeTradeDecision(filtered.length > 0 ? filtered : signals);
+        // Classify regime from the current rolling window (no look-ahead)
+        // when --regime is enabled. The backtester operates on a single
+        // token's candles; for a true cross-asset regime read you'd swap
+        // BTC candles in here, but per-candle BTC/ETH/SOL trends are
+        // highly correlated so the asset's own candles are a fair proxy.
+        let regime: MarketRegime | undefined;
+        if (this.config.useRegime) {
+          regime = MarketRegimeDetector.classifyFromCandles(windowCandles).regime;
+        }
+
+        decision = computeTradeDecision(
+          filtered.length > 0 ? filtered : signals,
+          this.config.customWeights,
+          undefined,
+          undefined,
+          regime,
+        );
+
+        // Calibrator uses scalar threshold overrides — re-derive action from
+        // score if buyThreshold/sellThreshold are set. STRONG_* thresholds
+        // extrapolate ±0.3 from the base (matches the regime threshold spread).
+        if (this.config.buyThreshold !== undefined || this.config.sellThreshold !== undefined) {
+          const buy = this.config.buyThreshold ?? decision.thresholds?.buy ?? 0.3;
+          const sell = this.config.sellThreshold ?? decision.thresholds?.sell ?? -0.3;
+          // Invariant: buy must strictly exceed sell. Otherwise a score at
+          // the collision point fires BUY (>= runs first) while a symmetric
+          // reading of the same market condition would fire SELL — the
+          // action becomes asymmetrically path-dependent on comparison order.
+          if (buy <= sell) {
+            throw new Error(
+              `Invalid threshold override: buyThreshold (${buy}) must be strictly greater ` +
+              `than sellThreshold (${sell}). Collision would produce ambiguous actions at score == threshold.`,
+            );
+          }
+          const strongBuy = buy + 0.3;
+          const strongSell = sell - 0.3;
+          let action: typeof decision.action;
+          if (decision.score >= strongBuy) action = 'STRONG_BUY';
+          else if (decision.score >= buy) action = 'BUY';
+          else if (decision.score <= strongSell) action = 'STRONG_SELL';
+          else if (decision.score <= sell) action = 'SELL';
+          else action = 'HOLD';
+          decision = { ...decision, action, thresholds: { strongBuy, buy, sell, strongSell } };
+        }
 
         // Verbose logging
         if (this.config.verbose) {
@@ -262,7 +367,8 @@ export class Backtester {
           const signalSummary = activeSignals.map(s =>
             `${s.name}:${s.value >= 0 ? '+' : ''}${s.value.toFixed(2)}`
           ).join(' ');
-          console.log(`${currentDate}: score=${decision.score.toFixed(2)} ${decision.action} (${signalSummary || 'no signals'})`);
+          const regimeTag = regime ? ` [${regime}]` : '';
+          console.log(`${currentDate}: score=${decision.score.toFixed(2)} ${decision.action}${regimeTag} (${signalSummary || 'no signals'})`);
         }
       } catch {
         continue; // skip candle if analysis fails
@@ -275,23 +381,36 @@ export class Backtester {
           entryPrice: currentPrice,
           entryDate: currentDate,
           signal: decision.action,
+          highWaterMark: currentPrice,
         };
-      } else if (position && (decision.action === 'SELL' || decision.action === 'STRONG_SELL')) {
-        // Exit long
-        const pnlPercent = (currentPrice - position.entryPrice) / position.entryPrice;
-        capital *= (1 + pnlPercent);
-        returns.push(pnlPercent);
+      } else if (position) {
+        // Update high-water mark for trailing stop
+        if (currentPrice > position.highWaterMark) {
+          position.highWaterMark = currentPrice;
+        }
 
-        trades.push({
-          entryDate: position.entryDate,
-          exitDate: currentDate,
-          entryPrice: position.entryPrice,
-          exitPrice: currentPrice,
-          pnlPercent,
-          signal: `${position.signal} → ${decision.action}`,
-        });
+        // Check trailing stop FIRST — exits faster than waiting for SELL signal
+        const trailingStopHit = this.config.trailingStopPct !== undefined
+          && currentPrice <= position.highWaterMark * (1 - this.config.trailingStopPct);
+        const sellSignal = decision.action === 'SELL' || decision.action === 'STRONG_SELL';
 
-        position = null;
+        if (trailingStopHit || sellSignal) {
+          const pnlPercent = (currentPrice - position.entryPrice) / position.entryPrice;
+          capital *= (1 + pnlPercent);
+          returns.push(pnlPercent);
+
+          const exitReason = trailingStopHit ? `TRAILING_STOP (-${(this.config.trailingStopPct! * 100).toFixed(1)}%)` : decision.action;
+          trades.push({
+            entryDate: position.entryDate,
+            exitDate: currentDate,
+            entryPrice: position.entryPrice,
+            exitPrice: currentPrice,
+            pnlPercent,
+            signal: `${position.signal} → ${exitReason}`,
+          });
+
+          position = null;
+        }
       }
     }
 
@@ -396,6 +515,9 @@ export class Backtester {
           strategies: config.strategies,
           cycle: '1d',
           verbose: false, // Don't spam verbose output during walk-forward
+          useRegime: config.useRegime,
+          trailingStopPct: config.trailingStopPct,
+          smoothFastSignals: config.smoothFastSignals,
         });
         const trainResult = await trainBacktester.run();
 
@@ -408,6 +530,9 @@ export class Backtester {
           strategies: config.strategies,
           cycle: '1d',
           verbose: false, // Don't spam verbose output during walk-forward
+          useRegime: config.useRegime,
+          trailingStopPct: config.trailingStopPct,
+          smoothFastSignals: config.smoothFastSignals,
         });
         const testResult = await testBacktester.run();
 

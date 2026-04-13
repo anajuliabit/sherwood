@@ -5,6 +5,7 @@
 import type { TechnicalSignals } from "./technical.js";
 import { clamp } from "./utils.js";
 import type { CorrelationCheck } from "./correlation.js";
+import type { MarketRegime } from "./regime.js";
 
 export interface Signal {
   name: string;
@@ -33,6 +34,44 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
   event: 0.10,
 };
 
+/**
+ * Named weight profiles for `--weight-profile <name>` and per-asset auto-selection.
+ *
+ * - default:    balanced — used when no profile selected
+ * - majors:     BTC/ETH/SOL — drops fundamental (no meaningful TVL on BTC),
+ *               drops event (token unlocks rare on majors). Mass redistributed
+ *               to technical + sentiment + smartMoney + onchain (the 4 that
+ *               actually fire on majors per signal-audit data).
+ * - altcoin:    smaller caps — keeps fundamental + event because TVL deltas
+ *               and unlocks meaningfully drive price action on altcoins.
+ * - sentHeavy:  contrarian setups (extreme F&G), bias toward sentiment signal.
+ * - techHeavy:  trend continuation setups, bias toward technical confirmation.
+ */
+export const WEIGHT_PROFILES: Record<string, ScoringWeights> = {
+  default: DEFAULT_WEIGHTS,
+  majors:    { smartMoney: 0.30, technical: 0.30, sentiment: 0.20, onchain: 0.20, fundamental: 0.00, event: 0.00 },
+  altcoin:   { smartMoney: 0.20, technical: 0.15, sentiment: 0.15, onchain: 0.15, fundamental: 0.20, event: 0.15 },
+  sentHeavy: { smartMoney: 0.10, technical: 0.15, sentiment: 0.40, onchain: 0.15, fundamental: 0.10, event: 0.10 },
+  techHeavy: { smartMoney: 0.10, technical: 0.40, sentiment: 0.15, onchain: 0.15, fundamental: 0.10, event: 0.10 },
+};
+
+/** Tokens that get the "majors" profile when auto-selection is enabled. */
+const MAJORS_TOKEN_IDS = new Set(["bitcoin", "ethereum", "solana"]);
+
+/**
+ * Pick a weight profile for a token. Returns user-specified profile if given,
+ * otherwise auto-selects "majors" for BTC/ETH/SOL and "default" for everything else.
+ */
+export function profileForToken(tokenId: string, userProfile?: string): ScoringWeights {
+  if (userProfile && WEIGHT_PROFILES[userProfile]) {
+    return WEIGHT_PROFILES[userProfile];
+  }
+  if (MAJORS_TOKEN_IDS.has(tokenId.toLowerCase())) {
+    return WEIGHT_PROFILES["majors"]!;
+  }
+  return DEFAULT_WEIGHTS;
+}
+
 export interface TradeDecision {
   action: "STRONG_BUY" | "BUY" | "HOLD" | "SELL" | "STRONG_SELL";
   score: number;
@@ -40,6 +79,45 @@ export interface TradeDecision {
   reasoning: string;
   confidence: number;
   timestamp: number;
+  /** Thresholds actually used to decide action — for audit + backtest replay. */
+  thresholds?: ActionThresholds;
+}
+
+/** BUY/SELL action thresholds. All values are score cutoffs in [-1, 1]. */
+export interface ActionThresholds {
+  strongBuy: number;  // score >= strongBuy → STRONG_BUY
+  buy: number;        // score >= buy → BUY
+  sell: number;       // score <= sell → SELL (negative)
+  strongSell: number; // score <= strongSell → STRONG_SELL (more negative)
+}
+
+/** Default thresholds — symmetric, used when no regime info is provided. */
+export const DEFAULT_THRESHOLDS: ActionThresholds = {
+  strongBuy: 0.6,
+  buy: 0.3,
+  sell: -0.3,
+  strongSell: -0.6,
+};
+
+/**
+ * Regime-conditional thresholds.
+ *
+ * Trending regimes: asymmetric — easier to enter WITH the trend, harder to fade it.
+ * Ranging: symmetric but tighter — whipsaws are expensive, demand more conviction.
+ * High-volatility: tighter — wide moves without direction mean more false signals.
+ * Low-volatility: looser — cleaner signal environment, less noise to filter.
+ */
+export const REGIME_THRESHOLDS: Record<MarketRegime, ActionThresholds> = {
+  "trending-up": { strongBuy: 0.55, buy: 0.25, sell: -0.40, strongSell: -0.70 },
+  "trending-down": { strongBuy: 0.70, buy: 0.40, sell: -0.25, strongSell: -0.55 },
+  "ranging":        { strongBuy: 0.65, buy: 0.40, sell: -0.40, strongSell: -0.65 },
+  "high-volatility":{ strongBuy: 0.70, buy: 0.45, sell: -0.45, strongSell: -0.70 },
+  "low-volatility": { strongBuy: 0.60, buy: 0.30, sell: -0.30, strongSell: -0.60 },
+};
+
+export function thresholdsForRegime(regime?: MarketRegime): ActionThresholds {
+  if (!regime) return DEFAULT_THRESHOLDS;
+  return REGIME_THRESHOLDS[regime] ?? DEFAULT_THRESHOLDS;
 }
 
 // ── Score Technical Signals ──
@@ -366,8 +444,10 @@ export function computeTradeDecision(
   weights?: ScoringWeights,
   regimeAdjustments?: Record<string, number>,
   correlationCheck?: CorrelationCheck,
+  regime?: MarketRegime,
 ): TradeDecision {
   const w = weights ?? DEFAULT_WEIGHTS;
+  const thresholds = thresholdsForRegime(regime);
 
   // Map signal names to weight keys
   const weightMap: Record<string, number> = {
@@ -439,13 +519,17 @@ export function computeTradeDecision(
     score = Math.max(-1, Math.min(1, score));
   }
 
-  // Determine action
+  // Determine action using regime-conditional thresholds
   let action: TradeDecision["action"];
-  if (score > 0.6) action = "STRONG_BUY";
-  else if (score > 0.3) action = "BUY";
-  else if (score > -0.3) action = "HOLD";
-  else if (score > -0.6) action = "SELL";
-  else action = "STRONG_SELL";
+  // Symmetric >= / <= on both sides — exactly hitting a threshold counts as
+  // crossing it. Score == buy → BUY. Score == sell → SELL. Score ==
+  // strongSell → STRONG_SELL. This replaces the old mixed > / >= scheme
+  // flagged in code review as asymmetric.
+  if (score >= thresholds.strongBuy) action = "STRONG_BUY";
+  else if (score >= thresholds.buy) action = "BUY";
+  else if (score <= thresholds.strongSell) action = "STRONG_SELL";
+  else if (score <= thresholds.sell) action = "SELL";
+  else action = "HOLD";
 
   const reasoning = signals.map((s) => `[${s.source}] ${s.details}`).join("\n");
 
@@ -456,5 +540,6 @@ export function computeTradeDecision(
     reasoning,
     confidence,
     timestamp: Date.now(),
+    thresholds,
   };
 }

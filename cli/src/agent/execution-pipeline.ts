@@ -25,28 +25,87 @@ export interface TradeProposal {
   timestamp: number;
 }
 
-export class ExecutionPipeline {
+/**
+ * Score-weighted position sizing config.
+ *
+ * When enabled, risk percentage scales linearly with score magnitude
+ * across the [floor, ceiling] band. Score at the floor → minRiskPct.
+ * Score at or above the ceiling → maxRiskPct.
+ */
+export interface ScaledSizingConfig {
+  enabled: boolean;
+  floor: number;
+  ceiling: number;
+  minRiskPct: number;
+  maxRiskPct: number;
+}
 
+export const DEFAULT_SCALED_SIZING: ScaledSizingConfig = {
+  enabled: false,
+  floor: 0.30,
+  ceiling: 0.60,
+  minRiskPct: 0.005,
+  maxRiskPct: 0.02,
+};
+
+export interface ProposalOptions {
+  portfolioValueUsd?: number;
+  scaledSizing?: ScaledSizingConfig;
+}
+
+export class ExecutionPipeline {
   /**
    * Generate trade proposals from analysis results.
-   * Only creates proposals for high-confidence opportunities (score > 0.4, confidence > 50%).
+   * Only creates proposals for high-confidence opportunities — uses the
+   * regime-conditional BUY/SELL threshold from the decision (defaults to
+   * ±0.4 if the decision lacks regime context).
+   *
+   * Optional ProposalOptions.scaledSizing enables score-weighted sizing.
+   * Previously this was a mutable static field — fixed per code review
+   * to eliminate cross-invocation leakage in long-lived processes.
    */
   static generateProposals(
     analyses: TokenAnalysis[],
-    portfolioValueUsd: number = 10000
+    portfolioValueOrOpts: number | ProposalOptions = 10000,
+    optsArg?: ProposalOptions,
   ): TradeProposal[] {
+    // Backward-compatible call shape: either generateProposals(analyses, 10000)
+    // or generateProposals(analyses, { portfolioValueUsd, scaledSizing }).
+    const opts: ProposalOptions =
+      typeof portfolioValueOrOpts === 'number'
+        ? { portfolioValueUsd: portfolioValueOrOpts, ...(optsArg ?? {}) }
+        : (portfolioValueOrOpts ?? {});
+    const portfolioValueUsd = opts.portfolioValueUsd ?? 10000;
+    const scaledSizing = opts.scaledSizing ?? DEFAULT_SCALED_SIZING;
     const proposals: TradeProposal[] = [];
 
     for (const analysis of analyses) {
       const { decision, token, data } = analysis;
 
-      // Filter criteria: score > 0.4 and confidence > 50%
-      if (Math.abs(decision.score) <= 0.4 || decision.confidence <= 0.5) {
+      // Skip HOLD signals
+      if (decision.action === "HOLD") {
         continue;
       }
 
-      // Skip HOLD signals
-      if (decision.action === "HOLD") {
+      // Filter: score must clear the regime-conditional action threshold
+      // and confidence must exceed 50%. Falls back to ±0.4 for backward compat.
+      // When scaledSizing is on, the floor drops to scaledSizing.floor — the
+      // point is to take sub-threshold trades at proportionally smaller size,
+      // not to filter them out before sizing kicks in.
+      const baseBuyFloor = decision.thresholds?.buy ?? 0.4;
+      const baseSellFloor = decision.thresholds?.sell ?? -0.4;
+      const buyFloor = scaledSizing.enabled
+        ? Math.min(baseBuyFloor, scaledSizing.floor)
+        : baseBuyFloor;
+      const sellFloor = scaledSizing.enabled
+        ? Math.max(baseSellFloor, -scaledSizing.floor)
+        : baseSellFloor;
+      const clearsBuy = decision.score >= buyFloor;
+      const clearsSell = decision.score <= sellFloor;
+      if (!clearsBuy && !clearsSell) {
+        continue;
+      }
+      if (decision.confidence <= 0.5) {
         continue;
       }
 
@@ -73,8 +132,18 @@ export class ExecutionPipeline {
         ? entryPrice + (2.5 * riskAmount)
         : entryPrice - (2.5 * riskAmount);
 
-      // Position sizing (2% portfolio risk)
-      const riskPercentage = 0.02;
+      // Position sizing — fixed 2% by default, score-scaled if enabled.
+      // Score-scaled: bigger conviction → bigger size, smaller conviction → smaller size.
+      // The point: take more sub-0.4 trades but with proportionally smaller exposure.
+      let riskPercentage: number;
+      if (scaledSizing.enabled) {
+        const cfg = scaledSizing;
+        const absScore = Math.abs(decision.score);
+        const t = Math.min(1, Math.max(0, (absScore - cfg.floor) / (cfg.ceiling - cfg.floor)));
+        riskPercentage = cfg.minRiskPct + t * (cfg.maxRiskPct - cfg.minRiskPct);
+      } else {
+        riskPercentage = 0.02;
+      }
       const positionSizeUsd = (portfolioValueUsd * riskPercentage) / (Math.abs(entryPrice - stopLoss) / entryPrice);
 
       // Calculate leverage (size / max 10% portfolio allocation, capped at 5x)

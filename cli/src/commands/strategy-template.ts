@@ -428,14 +428,14 @@ async function buildInitDataForTemplate(
   }
 
   if (templateKey === "wsteth-moonwell") {
-    if (!opts.amount) {
-      console.error(chalk.red("--amount is required for wsteth-moonwell template"));
-      process.exit(1);
-    }
-    const supplyAmount = parseUnits(opts.amount as string, 18); // WETH = 18 decimals
+    const supplyAmount = opts.amount ? parseUnits(opts.amount as string, 18) : 0n; // WETH = 18 decimals; 0 => use full vault balance at execute time
     const slippageBps = BigInt((opts.slippage as string) || "500"); // default 5% slippage
-    const minWstethOut = supplyAmount - (supplyAmount * slippageBps) / 10000n;
-    const minWethOut = supplyAmount - (supplyAmount * slippageBps) / 10000n;
+    // Per-unit rates (1e18-scaled) — Aerodrome wstETH/WETH stable pool trades
+    // near 1:1, so default the expected rate to 1e18. Slippage cuts from that.
+    // Rates scale with amountIn at execute time → dynamic-all mode is safe.
+    const ONE = 10n ** 18n;
+    const minWstethOutPerWeth = (ONE * (10000n - slippageBps)) / 10000n;
+    const minWethOutPerWsteth = (ONE * (10000n - slippageBps)) / 10000n;
 
     const params: wstethBuilder.WstETHMoonwellInitParams = {
       weth: TOKENS().WETH,
@@ -444,8 +444,8 @@ async function buildInitDataForTemplate(
       aeroRouter: AERODROME().ROUTER,
       aeroFactory: AERODROME().FACTORY,
       supplyAmount,
-      minWstethOut,
-      minWethOut,
+      minWstethOutPerWeth,
+      minWethOutPerWsteth,
       deadlineOffset: 300n,
     };
 
@@ -533,12 +533,29 @@ async function buildInitDataForTemplate(
   }
 
   if (templateKey === "hyperliquid-perp") {
-    if (!opts.amount) { console.error(chalk.red("--amount is required for hyperliquid-perp template")); process.exit(1); }
     const token = (opts.token as string) || "USDC";
     const asset = resolveToken(token);
     const decimals = token.toUpperCase() === "USDC" ? 6 : 18;
-    const depositAmount = parseUnits(opts.amount as string, decimals);
-    const minReturn = parseUnits((opts.minReturn as string) || opts.amount as string, decimals);
+    // Omit --amount to use the vault's full asset balance at execute time (dynamic-all mode).
+    const depositAmount = opts.amount ? parseUnits(opts.amount as string, decimals) : 0n;
+    // --min-return is a settlement floor: `sweepToVault` reverts on the first
+    // call if `balance < minReturnAmount`. With --amount set we default to 1:1
+    // (return at least the deposit). With dynamic-all we have no anchor, so
+    // require --min-return explicitly — a zero floor would trivially pass the
+    // settlement guard and defeat the whole check.
+    if (depositAmount === 0n && !opts.minReturn) {
+      console.error(chalk.red(
+        "--min-return is required when --amount is omitted (dynamic-all mode).\n" +
+        "  The settlement floor can't be derived without a reference deposit — " +
+        "set it explicitly to the minimum USDC you'll accept back from HyperCore.",
+      ));
+      process.exit(1);
+    }
+    const minReturn = opts.minReturn
+      ? parseUnits(opts.minReturn as string, decimals)
+      : opts.amount
+        ? parseUnits(opts.amount as string, decimals)
+        : 0n;
     const leverage = Number((opts.leverage as string) || "10");
     const assetIndex = Number((opts.assetIndex as string) || "0");
     const maxPosition = parseUnits((opts.maxPosition as string) || "100000", decimals);

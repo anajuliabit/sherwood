@@ -32,7 +32,10 @@ import { Reporter } from "../agent/reporter.js";
 import { Backtester } from "../agent/backtest.js";
 import type { BacktestConfig, WalkForwardConfig } from "../agent/backtest.js";
 import { AlertFormatter } from "../agent/alert-formatter.js";
-import { ExecutionPipeline } from "../agent/execution-pipeline.js";
+import { ExecutionPipeline, DEFAULT_SCALED_SIZING } from "../agent/execution-pipeline.js";
+import { auditSignalHistory, suggestRenormalizedWeights, diffAudits } from "../agent/signal-audit.js";
+import type { AuditResult } from "../agent/signal-audit.js";
+import { DEFAULT_WEIGHTS } from "../agent/scoring.js";
 
 const DEFAULT_TOKENS = ["ethereum", "bitcoin", "solana", "aave", "uniswap"];
 
@@ -43,6 +46,7 @@ function makeConfig(overrides?: Partial<AgentConfig>): AgentConfig {
     dryRun: true,
     maxPositionPct: 5,
     maxRiskPct: 20,
+    useX402: true, // Paid signals (Nansen + Messari) on by default — opt out with --no-x402
     ...overrides,
   };
 }
@@ -58,10 +62,13 @@ export function registerAgentCommands(program: Command): void {
     .option("--all", "Analyze full watchlist")
     .option("--auto", "Use dynamic token selection from Hyperliquid market data")
     .option("--json", "Output as JSON")
-    .option("--x402", "Include paid x402 data (Nansen smart-money, Messari fundamentals)")
+    .option("--no-x402", "Skip paid x402 data (Nansen smart-money, Messari fundamentals) — on by default")
     .option("--telegram", "Output formatted summary for Telegram")
     .option("--proposals", "Generate trade proposals for high-confidence opportunities")
-    .action(async (tokens: string[], options: { all?: boolean; auto?: boolean; json?: boolean; x402?: boolean; telegram?: boolean; proposals?: boolean }) => {
+    .option("--weight-profile <name>", "Weight profile: default | majors | altcoin | sentHeavy | techHeavy (auto: majors for BTC/ETH/SOL)")
+    .option("--scaled-sizing", "Score-weighted position sizing (smaller positions for marginal scores)")
+    .option("--smooth", "Smooth fast signals with rolling 3-reading window")
+    .action(async (tokens: string[], options: { all?: boolean; auto?: boolean; json?: boolean; x402: boolean; telegram?: boolean; proposals?: boolean; weightProfile?: string; scaledSizing?: boolean; smooth?: boolean }) => {
       let tokenList: string[];
       let selectionSummary: string | undefined;
 
@@ -87,7 +94,10 @@ export function registerAgentCommands(program: Command): void {
         tokenList = options.all ? DEFAULT_TOKENS : tokens.length > 0 ? tokens : DEFAULT_TOKENS;
       }
 
-      const config = makeConfig({ tokens: tokenList, useX402: options.x402 ?? false });
+      const scaledSizing = options.scaledSizing
+        ? { ...DEFAULT_SCALED_SIZING, enabled: true }
+        : undefined;
+      const config = makeConfig({ tokens: tokenList, useX402: options.x402, weightProfile: options.weightProfile, smoothFastSignals: options.smooth });
       const tradingAgent = new TradingAgent(config);
       const spinner = ora("Analyzing tokens...").start();
 
@@ -106,7 +116,7 @@ export function registerAgentCommands(program: Command): void {
 
         if (options.proposals) {
           // Output trade proposals
-          const proposals = ExecutionPipeline.generateProposals(results);
+          const proposals = ExecutionPipeline.generateProposals(results, { scaledSizing });
           const formatted = ExecutionPipeline.formatProposals(proposals);
           console.log(formatted);
           return;
@@ -287,8 +297,11 @@ export function registerAgentCommands(program: Command): void {
     .option("--strategy-clone <address>", "Strategy clone address on HyperEVM (required for hyperliquid-perp)")
     .option("--chain <chain>", "Chain for live execution (hyperevm, hyperevm-testnet)", "ethereum")
     .option("--asset-index <n>", "HyperCore perp asset index (default: 3 = ETH)")
-    .option("--x402", "Include paid x402 data (Nansen smart-money, Messari fundamentals)")
-    .action(async (options: { cycle?: string; dryRun?: boolean; tokens?: string; auto?: boolean; log?: string; mode?: string; strategyClone?: string; chain?: string; assetIndex?: string; x402?: boolean }) => {
+    .option("--no-x402", "Skip paid x402 data (Nansen smart-money, Messari fundamentals) — on by default")
+    .option("--weight-profile <name>", "Weight profile: default | majors | altcoin | sentHeavy | techHeavy (auto: majors for BTC/ETH/SOL)")
+    .option("--scaled-sizing", "Score-weighted position sizing (smaller positions for marginal scores)")
+    .option("--smooth", "Smooth fast signals with rolling 3-reading window")
+    .action(async (options: { cycle?: string; dryRun?: boolean; tokens?: string; auto?: boolean; log?: string; mode?: string; strategyClone?: string; chain?: string; assetIndex?: string; x402: boolean; weightProfile?: string; scaledSizing?: boolean; smooth?: boolean }) => {
       let tokenList: string[];
 
       if (options.auto) {
@@ -322,6 +335,9 @@ export function registerAgentCommands(program: Command): void {
       }
 
       const isLive = options.mode === 'hyperliquid-perp';
+      // NOTE: options.scaledSizing is currently a no-op here because the loop
+      // does not call ExecutionPipeline.generateProposals. If that changes,
+      // pass { scaledSizing } through LoopConfig and into the proposal call.
       if (isLive && !options.strategyClone) {
         console.error(chalk.red('  --strategy-clone is required for hyperliquid-perp mode'));
         process.exitCode = 1;
@@ -335,7 +351,7 @@ export function registerAgentCommands(program: Command): void {
       }
 
       const loopConfig: LoopConfig = {
-        agent: makeConfig({ tokens: tokenList, cycle, dryRun: !isLive, useX402: options.x402 ?? false }),
+        agent: makeConfig({ tokens: tokenList, cycle, dryRun: !isLive, useX402: options.x402, weightProfile: options.weightProfile, smoothFastSignals: options.smooth }),
         execution: {
           dryRun: !isLive,
           mode: (options.mode ?? 'dry-run') as 'dry-run' | 'hyperliquid-perp',
@@ -560,9 +576,23 @@ export function registerAgentCommands(program: Command): void {
     .option("--train <days>", "Training window in days for walk-forward", "90")
     .option("--test <days>", "Test window in days for walk-forward", "30")
     .option("--verbose", "Show detailed decision logs for each candle")
-    .action(async (token: string, options: { from: string; to: string; strategies: string; capital: string; cycle: string; walkForward?: boolean; train: string; test: string; verbose?: boolean }) => {
+    .option("--regime", "Apply regime-conditional thresholds per-candle (matches live behavior)")
+    .option("--trailing-stop <pct>", "Trailing stop as decimal (e.g. 0.05 = 5%) — exits if price drops X% from high-water mark")
+    .option("--scaled-sizing", "Score-weighted position sizing (smaller positions for marginal scores)")
+    .option("--weight-profile <name>", "Named weight profile: default | majors | altcoin | sentHeavy | techHeavy")
+    .option("--smooth", "Smooth fast signals (HL flow, smartMoney, dexFlow, fundingRate) with rolling 3-reading window")
+    .action(async (token: string, options: { from: string; to: string; strategies: string; capital: string; cycle: string; walkForward?: boolean; train: string; test: string; verbose?: boolean; regime?: boolean; trailingStop?: string; scaledSizing?: boolean; weightProfile?: string; smooth?: boolean }) => {
       const capital = parseFloat(options.capital);
       const strategies = options.strategies ? options.strategies.split(",").map((s) => s.trim()) : [];
+      const trailingStopPct = options.trailingStop ? parseFloat(options.trailingStop) : undefined;
+      if (trailingStopPct !== undefined && (!Number.isFinite(trailingStopPct) || trailingStopPct <= 0 || trailingStopPct > 0.5)) {
+        console.error(chalk.red("--trailing-stop must be between 0 and 0.5 (e.g. 0.05 = 5%)"));
+        process.exitCode = 1;
+        return;
+      }
+      // NOTE: options.scaledSizing is currently a no-op in backtest because
+      // the backtester doesn't generate TradeProposals — it simulates its own
+      // BUY/SELL directly from decision.action. Flag is parsed but unused.
 
       if (options.walkForward) {
         // Walk-forward optimization mode
@@ -579,6 +609,9 @@ export function registerAgentCommands(program: Command): void {
           stepSize,
           capital,
           strategies,
+          useRegime: options.regime,
+          trailingStopPct,
+          smoothFastSignals: options.smooth,
         };
 
         const spinner = ora(`Walk-forward testing ${token} (${trainWindow}d train, ${testWindow}d test)...`).start();
@@ -592,6 +625,9 @@ export function registerAgentCommands(program: Command): void {
             strategies,
             cycle: (options.cycle as BacktestConfig["cycle"]) || "1d",
             verbose: options.verbose,
+            useRegime: options.regime,
+            trailingStopPct,
+            smoothFastSignals: options.smooth,
           });
           const result = await backtester.walkForwardTest(walkConfig);
           spinner.stop();
@@ -610,6 +646,9 @@ export function registerAgentCommands(program: Command): void {
           strategies,
           cycle: (options.cycle as BacktestConfig["cycle"]) || "1d",
           verbose: options.verbose,
+          useRegime: options.regime,
+          trailingStopPct,
+          smoothFastSignals: options.smooth,
         };
 
         const spinner = ora(`Backtesting ${token} from ${config.startDate} to ${config.endDate}...`).start();
@@ -624,6 +663,193 @@ export function registerAgentCommands(program: Command): void {
           process.exitCode = 1;
         }
       }
+    });
+
+  // ── signal-audit ──
+  agent
+    .command("signal-audit")
+    .description("Audit signal history — which signal categories actually fire?")
+    .option("--drop-threshold <rate>", "Fire-rate below which a category is flagged for dropping", "0.1")
+    .option("--json", "Emit raw JSON instead of formatted table")
+    .option("--save <path>", "Save current audit as a baseline JSON snapshot")
+    .option("--baseline <path>", "Diff current audit against a saved baseline")
+    .action(async (options: { dropThreshold?: string; json?: boolean; save?: string; baseline?: string }) => {
+      const dropThreshold = parseFloat(options.dropThreshold ?? "0.1");
+      const result = await auditSignalHistory();
+
+      // --save: write snapshot and exit
+      if (options.save) {
+        await mkdir(join(homedir(), '.sherwood', 'agent'), { recursive: true });
+        await writeFile(options.save, JSON.stringify(result, null, 2), 'utf-8');
+        console.log(chalk.green(`  Saved baseline snapshot to ${options.save}`));
+        console.log(chalk.dim(`  ${result.totalEntries} entries, ${result.perSignal.length} signals`));
+        return;
+      }
+
+      // --baseline: load and diff
+      if (options.baseline) {
+        let baseline: AuditResult;
+        try {
+          const raw = await readFile(options.baseline, 'utf-8');
+          baseline = JSON.parse(raw) as AuditResult;
+        } catch (err) {
+          console.error(chalk.red(`  Failed to load baseline: ${(err as Error).message}`));
+          process.exitCode = 1;
+          return;
+        }
+
+        const diff = diffAudits(baseline, result);
+
+        if (options.json) {
+          console.log(JSON.stringify(diff, null, 2));
+          return;
+        }
+
+        console.log("");
+        console.log(chalk.bold("  Signal Audit Diff"));
+        console.log(chalk.dim("  " + "═".repeat(72)));
+        if (baseline.dateRange && result.dateRange) {
+          console.log(chalk.dim(`  Baseline: ${baseline.dateRange.from.slice(0, 10)} → ${baseline.dateRange.to.slice(0, 10)} (${baseline.totalEntries} entries)`));
+          console.log(chalk.dim(`  Current:  ${result.dateRange.from.slice(0, 10)} → ${result.dateRange.to.slice(0, 10)} (${result.totalEntries} entries)`));
+        }
+        console.log("");
+
+        // Per-category diff
+        console.log(chalk.bold("  Per Category"));
+        console.log(chalk.dim(`  ${"Category".padEnd(14)} ${"Was".padEnd(7)} ${"Now".padEnd(7)} ${"Δ".padEnd(8)} Status`));
+        console.log(chalk.dim("  " + "─".repeat(72)));
+        for (const c of diff.perCategory) {
+          const arrow = c.status === "improved" ? chalk.green("↑") :
+            c.status === "regressed" ? chalk.red("↓") :
+            c.status === "new" ? chalk.cyan("✦") :
+            c.status === "removed" ? chalk.red("✗") : chalk.dim("=");
+          const deltaStr = (c.fireRateDelta >= 0 ? "+" : "") + (c.fireRateDelta * 100).toFixed(0) + "pp";
+          const deltaColor = c.status === "improved" ? chalk.green : c.status === "regressed" ? chalk.red : chalk.dim;
+          console.log(
+            `  ${c.category.padEnd(14)} ${(c.baseline.fireRate * 100).toFixed(0).padStart(5)}%  ${(c.current.fireRate * 100).toFixed(0).padStart(5)}%  ${deltaColor(deltaStr.padEnd(7))} ${arrow} ${c.status}`,
+          );
+        }
+
+        // Per-signal diff (only show changes)
+        const changedSignals = diff.perSignal.filter((s) => s.status !== "stable");
+        if (changedSignals.length > 0) {
+          console.log("");
+          console.log(chalk.bold("  Changed Signals"));
+          console.log(chalk.dim(`  ${"Signal".padEnd(22)} ${"Was".padEnd(7)} ${"Now".padEnd(7)} ${"Δ".padEnd(8)} Status`));
+          console.log(chalk.dim("  " + "─".repeat(72)));
+          for (const s of changedSignals) {
+            const arrow = s.status === "improved" ? chalk.green("↑") :
+              s.status === "regressed" ? chalk.red("↓") :
+              s.status === "new" ? chalk.cyan("✦") :
+              s.status === "removed" ? chalk.red("✗") : chalk.dim("=");
+            const deltaStr = (s.fireRateDelta >= 0 ? "+" : "") + (s.fireRateDelta * 100).toFixed(0) + "pp";
+            const deltaColor = s.status === "improved" ? chalk.green : s.status === "regressed" ? chalk.red : chalk.dim;
+            console.log(
+              `  ${s.name.padEnd(22)} ${(s.baseline.fireRate * 100).toFixed(0).padStart(5)}%  ${(s.current.fireRate * 100).toFixed(0).padStart(5)}%  ${deltaColor(deltaStr.padEnd(7))} ${arrow} ${s.status}`,
+            );
+          }
+        } else {
+          console.log("");
+          console.log(chalk.dim("  No per-signal changes above 5pp threshold."));
+        }
+        console.log("");
+        return;
+      }
+
+      if (options.json) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+
+      console.log("");
+      console.log(chalk.bold("  Signal Activity Audit"));
+      console.log(chalk.dim("  " + "═".repeat(72)));
+
+      if (result.totalEntries === 0) {
+        console.log(chalk.dim(`  No signal history yet at ${result.filePath}`));
+        console.log(chalk.dim("  Run 'sherwood agent analyze' a few times to populate it."));
+        console.log("");
+        return;
+      }
+
+      console.log(chalk.dim(`  Source:  ${result.filePath}`));
+      console.log(chalk.dim(`  Entries: ${result.totalEntries}`));
+      if (result.dateRange) {
+        console.log(
+          chalk.dim(
+            `  Range:   ${result.dateRange.from.slice(0, 10)} → ${result.dateRange.to.slice(0, 10)}`,
+          ),
+        );
+      }
+      console.log("");
+
+      // Per-category summary
+      console.log(chalk.bold("  Per Category"));
+      console.log(
+        chalk.dim(
+          `  ${"Category".padEnd(14)} ${"Fire%".padEnd(7)} ${"Obs".padEnd(6)} ${"Mean|v|".padEnd(9)} Signals`,
+        ),
+      );
+      console.log(chalk.dim("  " + "─".repeat(72)));
+      for (const c of result.perCategory) {
+        const color =
+          c.recommendation === "keep"
+            ? chalk.green
+            : c.recommendation === "drop"
+              ? chalk.red
+              : chalk.yellow;
+        const rec = `[${c.recommendation.toUpperCase()}]`;
+        console.log(
+          `  ${c.category.padEnd(14)} ${(c.fireRate * 100).toFixed(0).padStart(5)}%  ${String(c.observations).padEnd(6)} ${c.meanAbsValue.toFixed(3).padEnd(9)} ${c.signalNames.join(", ")} ${color(rec)}`,
+        );
+      }
+
+      // Per-signal detail
+      console.log("");
+      console.log(chalk.bold("  Per Signal"));
+      console.log(
+        chalk.dim(
+          `  ${"Signal".padEnd(22)} ${"Category".padEnd(12)} ${"Fire%".padEnd(7)} ${"Obs".padEnd(6)} ${"Mean|v|".padEnd(9)} ${"Bias".padEnd(8)} Conf`,
+        ),
+      );
+      console.log(chalk.dim("  " + "─".repeat(72)));
+      for (const s of result.perSignal) {
+        const biasColor = s.directionalBias >= 0 ? chalk.green : chalk.red;
+        console.log(
+          `  ${s.name.padEnd(22)} ${s.category.padEnd(12)} ${(s.fireRate * 100).toFixed(0).padStart(5)}%  ${String(s.observations).padEnd(6)} ${s.meanAbsValue.toFixed(3).padEnd(9)} ${biasColor((s.directionalBias >= 0 ? "+" : "") + s.directionalBias.toFixed(3)).padEnd(17)} ${s.meanConfidence.toFixed(2)}`,
+        );
+      }
+
+      // Renormalized weight suggestion
+      const current = DEFAULT_WEIGHTS as unknown as Record<string, number>;
+      const suggested = suggestRenormalizedWeights(current, result.perCategory, dropThreshold);
+      const changed = Object.keys(current).some(
+        (k) => Math.abs((suggested[k] ?? 0) - (current[k] ?? 0)) > 0.001,
+      );
+
+      if (changed) {
+        console.log("");
+        console.log(chalk.bold("  Suggested Weight Renormalization"));
+        console.log(chalk.dim(`  (Dropping categories below ${(dropThreshold * 100).toFixed(0)}% fire rate)`));
+        console.log(chalk.dim("  " + "─".repeat(72)));
+        console.log(
+          chalk.dim(
+            `  ${"Category".padEnd(14)} ${"Current".padEnd(10)} ${"Suggested"}`,
+          ),
+        );
+        for (const [cat, w] of Object.entries(current)) {
+          const newW = suggested[cat] ?? 0;
+          const tag =
+            newW === 0 ? chalk.red(" ← drop") : newW > w ? chalk.green(" ← boost") : "";
+          console.log(
+            `  ${cat.padEnd(14)} ${w.toFixed(3).padEnd(10)} ${newW.toFixed(3)}${tag}`,
+          );
+        }
+      } else {
+        console.log("");
+        console.log(chalk.dim("  All categories above drop threshold — no renormalization suggested."));
+      }
+      console.log("");
     });
 
   // ── alerts ──
