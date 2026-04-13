@@ -68,7 +68,7 @@ export default function ExecutionCallPreview({
           {calls.map((c, i) => {
             const selector = c.data.length >= 10 ? c.data.slice(0, 10) : "0x";
             return (
-              <div key={i} className="exec-preview__row">
+              <div key={`${c.target}-${i}`} className="exec-preview__row">
                 <span className="exec-preview__idx">{String(i + 1).padStart(2, "0")}</span>
                 <a
                   href={`${explorerUrl}/address/${c.target}`}

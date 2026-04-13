@@ -201,7 +201,7 @@ export default function VoteConcentration({
       )}
       {!loading && !errored && rows && rows.length === 0 && (
         <div className="exec-preview__empty">
-          No votes cast yet — or the proposal predates our 7d log scan window.
+          No votes cast yet — or the proposal predates the log scan window.
         </div>
       )}
     </details>

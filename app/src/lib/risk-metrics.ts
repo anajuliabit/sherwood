@@ -58,13 +58,16 @@ export function computeRiskMetrics(series: number[]): RiskMetrics {
     }
   }
 
-  const totalReturn = start > 0 ? (current - start) / start : 0;
+  // If the series starts at zero (e.g. chart window predates the first
+  // deposit), a percentage return from zero is undefined. Returning 0%
+  // would be misleading — surface null so the UI renders "—" instead.
+  const totalReturnPct = start > 0 ? ((current - start) / start) * 100 : null;
   // Series buckets are daily samples in fetchEquityCurve — index distance
   // from the HWM bucket is therefore "days since HWM".
   const daysSinceHWM = series.length - 1 - hwmIndex;
 
   return {
-    totalReturnPct: totalReturn * 100,
+    totalReturnPct,
     maxDrawdownPct: maxDrawdown * 100,
     daysSinceHWM,
     current,
