@@ -12,6 +12,7 @@ import {
   ERC20_ABI,
   SYNDICATE_VAULT_ABI,
   getAddresses,
+  shareDecimals,
   truncateAddress,
 } from "@/lib/contracts";
 import { useToast } from "@/components/ui/Toast";
@@ -154,7 +155,7 @@ export default function DepositModal({
       toast.success(
         `Deposited ${amount} ${assetSymbol}`,
         expectedShares > 0n
-          ? `Received ~${parseFloat(formatUnits(expectedShares, assetDecimals * 2)).toLocaleString(undefined, { maximumFractionDigits: 2 })} shares`
+          ? `Received ~${parseFloat(formatUnits(expectedShares, shareDecimals(assetDecimals))).toLocaleString(undefined, { maximumFractionDigits: 2 })} shares`
           : "Your position is live onchain.",
       );
     }
@@ -392,7 +393,7 @@ export default function DepositModal({
               >
                 <span style={{ color: "rgba(255,255,255,0.6)" }}>You will receive</span>
                 <span style={{ color: "var(--color-accent)", fontWeight: 600 }}>
-                  ~{parseFloat(formatUnits(expectedShares, assetDecimals * 2)).toLocaleString(undefined, { maximumFractionDigits: 4 })} shares
+                  ~{parseFloat(formatUnits(expectedShares, shareDecimals(assetDecimals))).toLocaleString(undefined, { maximumFractionDigits: 4 })} shares
                 </span>
               </div>
             )}

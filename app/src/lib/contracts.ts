@@ -965,8 +965,20 @@ export function formatBps(bps: bigint): string {
   return `${(Number(bps) / 100).toFixed(1)}%`;
 }
 
-/** Format vault shares to a readable number.
- *  Shares have assetDecimals * 2 decimals due to _decimalsOffset() (12 for USDC). */
+/** Decimals of vault shares for an asset.
+ *
+ *  ERC-4626 with `_decimalsOffset() = asset.decimals()` (the convention this
+ *  protocol uses for inflation protection) means shares carry double the
+ *  asset's decimals — 12 for USDC's 6 decimals, 36 for WETH's 18.
+ *
+ *  Centralizing this avoids the `assetDecimals * 2` magic that callers were
+ *  open-coding everywhere. If the offset convention ever changes we update
+ *  one function instead of grepping the codebase. */
+export function shareDecimals(assetDecimals: number): number {
+  return assetDecimals * 2;
+}
+
+/** Format vault shares to a readable number. */
 export function formatShares(raw: bigint, decimals: number = 12): string {
   const num = parseFloat(formatUnits(raw, decimals));
   return num.toLocaleString("en-US", {

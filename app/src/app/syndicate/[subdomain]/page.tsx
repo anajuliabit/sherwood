@@ -179,6 +179,7 @@ export default async function SyndicateDetailPage({
                   vaultName={name}
                   openDeposits={data.openDeposits}
                   paused={data.paused}
+                  redemptionsLocked={data.redemptionsLocked}
                   assetAddress={data.assetAddress}
                   assetDecimals={data.assetDecimals}
                   assetSymbol={data.assetSymbol}

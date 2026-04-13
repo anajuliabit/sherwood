@@ -1,5 +1,5 @@
 import { formatUnits, type Address } from "viem";
-import { formatBps } from "@/lib/contracts";
+import { formatBps, shareDecimals } from "@/lib/contracts";
 import RedemptionLockStatus from "@/components/RedemptionLockStatus";
 import { Term } from "@/components/ui/Glossary";
 
@@ -71,7 +71,7 @@ export default function VaultOverview({
         <div className="param-row">
           <span className="param-key">Total Shares</span>
           <span className="param-val">
-            {parseFloat(formatUnits(totalSupply, assetDecimals * 2)).toLocaleString("en-US", {
+            {parseFloat(formatUnits(totalSupply, shareDecimals(assetDecimals))).toLocaleString("en-US", {
               maximumFractionDigits: 2,
             })}
           </span>
