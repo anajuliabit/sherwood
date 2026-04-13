@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { resolveSyndicateBySubdomain } from "@/lib/syndicate-data";
 import { fetchGovernorData, ProposalState } from "@/lib/governor-data";
 import { truncateAddress, formatAsset, getAddresses } from "@/lib/contracts";
+import { TargetChainProvider } from "@/components/TargetChainContext";
 
 interface PageParams {
   subdomain: string;
@@ -86,7 +87,7 @@ export default async function AgentDetailPage({
         : `${sign}${formatAsset(totalPnlAbs, data.assetDecimals)} ${data.assetSymbol}`;
 
   return (
-    <>
+    <TargetChainProvider chainId={data.chainId}>
       <AmbientBackground />
       <div className="layout layout-normal">
         <main
@@ -325,6 +326,6 @@ export default async function AgentDetailPage({
         </main>
       </div>
       <SiteFooter />
-    </>
+    </TargetChainProvider>
   );
 }

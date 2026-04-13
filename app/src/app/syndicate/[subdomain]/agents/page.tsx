@@ -7,6 +7,7 @@ import SyndicateClient from "@/components/SyndicateClient";
 import { resolveSyndicateBySubdomain } from "@/lib/syndicate-data";
 import AttestationTimeline from "@/components/AttestationTimeline";
 import { truncateAddress, getAddresses } from "@/lib/contracts";
+import { TargetChainProvider } from "@/components/TargetChainContext";
 
 export async function generateMetadata({
   params,
@@ -47,7 +48,7 @@ export default async function AgentsPage({
   const hasIdentityRegistry = getAddresses(data.chainId).identityRegistry !== "0x0000000000000000000000000000000000000000";
 
   return (
-    <>
+    <TargetChainProvider chainId={data.chainId}>
       <AmbientBackground />
 
       <div className="layout layout-normal">
@@ -204,6 +205,6 @@ export default async function AgentsPage({
       </div>
 
       <SiteFooter />
-    </>
+    </TargetChainProvider>
   );
 }

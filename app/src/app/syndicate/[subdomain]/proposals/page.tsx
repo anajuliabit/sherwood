@@ -18,6 +18,7 @@ import { formatBps, getAddresses } from "@/lib/contracts";
 import { formatDuration } from "@/lib/governor-data";
 import type { ActivityEvent } from "@/lib/syndicate-data";
 import { Term } from "@/components/ui/Glossary";
+import { TargetChainProvider } from "@/components/TargetChainContext";
 import type { Address } from "viem";
 
 /** Reduce activity events into a per-proposal receipt lookup. */
@@ -308,7 +309,7 @@ export default async function ProposalsPage({
   );
 
   return (
-    <>
+    <TargetChainProvider chainId={data.chainId}>
       <AmbientBackground />
 
       <div className="layout layout-normal">
@@ -433,6 +434,6 @@ export default async function ProposalsPage({
       </div>
 
       <SiteFooter />
-    </>
+    </TargetChainProvider>
   );
 }

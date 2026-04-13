@@ -3,8 +3,9 @@
 /**
  * ChainGuard — sticky banner shown when the connected wallet is on a chain
  * that isn't one of Sherwood's supported chains. Offers a one-click switch
- * to the first configured chain. Invisible when disconnected or already on
- * a supported chain.
+ * to the page-relevant chain (when known) or the first configured chain
+ * as a fallback. Invisible when disconnected or already on a supported
+ * chain — including when the user is correctly on the page's chain.
  */
 
 import { useEffect } from "react";
@@ -12,19 +13,37 @@ import { useAccount, useChainId, useSwitchChain } from "wagmi";
 import { CHAINS } from "@/lib/contracts";
 import { useToast } from "@/components/ui/Toast";
 import { trackChainSwitchRequired } from "@/lib/analytics";
+import { useTargetChainId } from "@/components/TargetChainContext";
 
-export default function ChainGuard() {
+interface ChainGuardProps {
+  /** Chain the current page is anchored to (e.g. the syndicate's chain).
+   *  Overrides the value in TargetChainContext. When neither is set, the
+   *  banner falls back to the first configured chain. */
+  targetChainId?: number;
+}
+
+export default function ChainGuard({ targetChainId: targetChainIdProp }: ChainGuardProps = {}) {
   const { isConnected } = useAccount();
   const chainId = useChainId();
   const { switchChain, isPending } = useSwitchChain();
   const toast = useToast();
+  // Prop wins, then page context, then null (use first configured chain).
+  const ctxTargetChainId = useTargetChainId();
+  const targetChainId = targetChainIdProp ?? ctxTargetChainId ?? undefined;
 
   const supported = Object.keys(CHAINS).map((n) => Number(n));
-  const isWrongChain = isConnected && !supported.includes(chainId);
 
-  const firstChain = Object.values(CHAINS)[0];
-  const targetId = firstChain?.chain.id;
-  const targetName = firstChain?.chain.name ?? "Base";
+  // If a page-specific target chain is provided, the user must be on THAT
+  // chain to be considered "right". Otherwise, any supported chain works.
+  const onSupportedChain = supported.includes(chainId);
+  const onTargetChain = targetChainId ? chainId === targetChainId : onSupportedChain;
+  const isWrongChain = isConnected && !onTargetChain;
+
+  // Resolve target chain — page-supplied wins, else first configured chain.
+  const targetEntry =
+    (targetChainId && CHAINS[targetChainId]) || Object.values(CHAINS)[0];
+  const targetId = targetEntry?.chain.id;
+  const targetName = targetEntry?.chain.name ?? "Base";
 
   // Telemetry: record exposure to the wrong-chain banner
   useEffect(() => {

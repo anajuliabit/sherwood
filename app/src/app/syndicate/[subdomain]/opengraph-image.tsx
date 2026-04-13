@@ -16,10 +16,13 @@ export const contentType = "image/png";
 export default async function OgImage({
   params,
 }: {
-  params: { subdomain: string };
+  // Next.js 15+: dynamic route params are a Promise. Match the pattern
+  // used by every other page route in this repo.
+  params: Promise<{ subdomain: string }>;
 }) {
-  const data = await resolveSyndicateBySubdomain(params.subdomain);
-  const name = data?.metadata?.name || params.subdomain;
+  const { subdomain } = await params;
+  const data = await resolveSyndicateBySubdomain(subdomain);
+  const name = data?.metadata?.name || subdomain;
   const tvl = data?.display?.tvl || "—";
   const agents = data?.agentCount?.toString() || "0";
   const fee = data?.display?.managementFee || "—";
@@ -63,7 +66,7 @@ export default async function OgImage({
             />
             <span>Sherwood Syndicate</span>
           </div>
-          <div style={{ color: "#2EE6A6" }}>{params.subdomain}.sherwoodagent.eth</div>
+          <div style={{ color: "#2EE6A6" }}>{subdomain}.sherwoodagent.eth</div>
         </div>
 
         {/* Title */}

@@ -564,51 +564,54 @@ async function fetchStrategyActivity(
   if (!subgraphUrl) return [];
 
   try {
+    // GraphQL variables instead of string interpolation. Defensive against
+    // any future change to syndicateId provenance — even though it currently
+    // comes from on-chain readContract.
+    const query = `query Activity($id: String!) {
+      deposits(
+        where: { syndicate: $id }
+        orderBy: timestamp
+        orderDirection: desc
+        first: 20
+      ) {
+        sender
+        assets
+        timestamp
+        txHash
+      }
+      withdrawals(
+        where: { syndicate: $id }
+        orderBy: timestamp
+        orderDirection: desc
+        first: 20
+      ) {
+        owner
+        assets
+        timestamp
+        txHash
+      }
+      proposals(
+        where: { syndicate: $id, state_in: ["Executed", "Settled", "Cancelled"] }
+        orderBy: createdAt
+        orderDirection: desc
+        first: 20
+      ) {
+        id
+        proposer
+        capitalSnapshot
+        finalPnl
+        state
+        executedAt
+        settledAt
+        createdAt
+        txHash
+      }
+    }`;
+
     const response = await fetch(subgraphUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query: `{
-          deposits(
-            where: { syndicate: "${syndicateId}" }
-            orderBy: timestamp
-            orderDirection: desc
-            first: 20
-          ) {
-            sender
-            assets
-            timestamp
-            txHash
-          }
-          withdrawals(
-            where: { syndicate: "${syndicateId}" }
-            orderBy: timestamp
-            orderDirection: desc
-            first: 20
-          ) {
-            owner
-            assets
-            timestamp
-            txHash
-          }
-          proposals(
-            where: { syndicate: "${syndicateId}", state_in: ["Executed", "Settled", "Cancelled"] }
-            orderBy: createdAt
-            orderDirection: desc
-            first: 20
-          ) {
-            id
-            proposer
-            capitalSnapshot
-            finalPnl
-            state
-            executedAt
-            settledAt
-            createdAt
-            txHash
-          }
-        }`,
-      }),
+      body: JSON.stringify({ query, variables: { id: syndicateId } }),
       next: { revalidate: 60 },
     });
 
@@ -786,40 +789,40 @@ async function fetchEquityCurve(
   if (!subgraphUrl) return [currentTVL];
 
   try {
+    const curveQuery = `query EquityCurve($id: String!) {
+      deposits(
+        where: { syndicate: $id }
+        orderBy: timestamp
+        orderDirection: asc
+        first: 1000
+      ) {
+        assets
+        timestamp
+      }
+      withdrawals(
+        where: { syndicate: $id }
+        orderBy: timestamp
+        orderDirection: asc
+        first: 1000
+      ) {
+        assets
+        timestamp
+      }
+      proposals(
+        where: { syndicate: $id, state: "Settled" }
+        orderBy: settledAt
+        orderDirection: asc
+        first: 1000
+      ) {
+        finalPnl
+        settledAt
+      }
+    }`;
+
     const response = await fetch(subgraphUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query: `{
-          deposits(
-            where: { syndicate: "${syndicateId}" }
-            orderBy: timestamp
-            orderDirection: asc
-            first: 1000
-          ) {
-            assets
-            timestamp
-          }
-          withdrawals(
-            where: { syndicate: "${syndicateId}" }
-            orderBy: timestamp
-            orderDirection: asc
-            first: 1000
-          ) {
-            assets
-            timestamp
-          }
-          proposals(
-            where: { syndicate: "${syndicateId}", state: "Settled" }
-            orderBy: settledAt
-            orderDirection: asc
-            first: 1000
-          ) {
-            finalPnl
-            settledAt
-          }
-        }`,
-      }),
+      body: JSON.stringify({ query: curveQuery, variables: { id: syndicateId } }),
       next: { revalidate: 60 },
     });
 

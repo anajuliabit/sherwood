@@ -17,6 +17,7 @@ import { getAddresses } from "@/lib/contracts";
 import StrategyActivity from "@/components/StrategyActivity";
 import ReferralBanner from "@/components/ReferralBanner";
 import { RecentlyViewedTracker } from "@/components/RecentlyViewed";
+import { TargetChainProvider } from "@/components/TargetChainContext";
 import { resolveSyndicateBySubdomain } from "@/lib/syndicate-data";
 import { loadActiveStrategy } from "@/lib/active-strategy";
 
@@ -91,7 +92,7 @@ export default async function SyndicateDetailPage({
   );
 
   return (
-    <>
+    <TargetChainProvider chainId={data.chainId}>
       <AmbientBackground />
 
       <div className="layout layout-normal">
@@ -247,6 +248,6 @@ export default async function SyndicateDetailPage({
       </div>
 
       <SiteFooter />
-    </>
+    </TargetChainProvider>
   );
 }
