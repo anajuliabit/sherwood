@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import TorusKnotBackground from "@/components/TorusKnotBackground";
+import AmbientBackground from "@/components/AmbientBackground";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
 import SyndicateClient from "@/components/SyndicateClient";
@@ -376,17 +376,7 @@ export default async function ProposalsPage({
 
   return (
     <>
-      <TorusKnotBackground
-        radius={10}
-        tube={0.2}
-        tubularSegments={128}
-        radialSegments={16}
-        p={3}
-        q={4}
-        opacity={0.15}
-        fogDensity={0.08}
-      />
-      <div className="scanlines" style={{ opacity: 0.2 }} />
+      <AmbientBackground />
 
       <div className="layout layout-normal">
         <main className="px-4 md:px-8 lg:px-16 mx-auto w-full max-w-[1400px]">
@@ -445,6 +435,9 @@ export default async function ProposalsPage({
             assetSymbol={data.assetSymbol}
             portfolioAllocations={portfolioAllocations}
             enrichedPortfolio={enrichedPortfolio}
+            governorAddress={!isMock ? governor.governorAddress : undefined}
+            chainId={!isMock ? data.chainId : undefined}
+            explorerUrl={!isMock ? getAddresses(data.chainId).blockExplorer : undefined}
           />
 
           {/* Voting Queue */}
@@ -468,6 +461,8 @@ export default async function ProposalsPage({
                   assetDecimals={data.assetDecimals}
                   addressNames={addressNames}
                   disabled={isMock}
+                  chainId={!isMock ? data.chainId : undefined}
+                  explorerUrl={!isMock ? getAddresses(data.chainId).blockExplorer : undefined}
                 />
               ))}
             </div>

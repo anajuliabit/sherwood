@@ -1,4 +1,4 @@
-import TorusKnotBackground from "@/components/TorusKnotBackground";
+import AmbientBackground from "@/components/AmbientBackground";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
 import LeaderboardTabs from "./LeaderboardTabs";
@@ -31,7 +31,7 @@ export default async function LeaderboardPage() {
 
   return (
     <>
-      <TorusKnotBackground />
+      <AmbientBackground />
       <div className="scanlines" />
 
       <div className="layout">

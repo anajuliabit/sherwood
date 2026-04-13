@@ -7,6 +7,8 @@ import {
 } from "@/lib/governor-data";
 import { truncateAddress, formatBps, formatShares } from "@/lib/contracts";
 import VoteButton from "./VoteButton";
+import ExecutionCallPreview from "./ExecutionCallPreview";
+import { ProposalStepper } from "@/components/ui/ProposalStepper";
 
 interface ProposalCardProps {
   proposal: ProposalData;
@@ -16,6 +18,9 @@ interface ProposalCardProps {
   addressNames?: Record<string, string>;
   /** When true, voting UI is replaced with a demo-mode notice. */
   disabled?: boolean;
+  /** When provided, renders execution-call preview (chainId + explorer URL). */
+  chainId?: number;
+  explorerUrl?: string;
 }
 
 export default function ProposalCard({
@@ -25,6 +30,8 @@ export default function ProposalCard({
   assetDecimals,
   addressNames,
   disabled = false,
+  chainId,
+  explorerUrl,
 }: ProposalCardProps) {
   const title =
     proposal.metadata?.title || `Proposal #${proposal.id.toString()}`;
@@ -130,6 +137,21 @@ export default function ProposalCard({
           </div>
         ) : (
           <div className="prop-card__no-votes">{"// No Votes Yet"}</div>
+        )}
+
+        {/* Proposal state stepper */}
+        <div style={{ marginTop: "0.75rem", marginBottom: "0.5rem" }}>
+          <ProposalStepper state={proposal.computedState} />
+        </div>
+
+        {/* Execution plan — visible only for live syndicates */}
+        {!disabled && chainId && explorerUrl && (
+          <ExecutionCallPreview
+            governorAddress={governorAddress}
+            proposalId={proposal.id}
+            chainId={chainId}
+            explorerUrl={explorerUrl}
+          />
         )}
 
         {isPending && (

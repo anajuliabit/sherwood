@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import TorusKnotBackground from "@/components/TorusKnotBackground";
+import AmbientBackground from "@/components/AmbientBackground";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
 import SyndicateClient from "@/components/SyndicateClient";
@@ -57,17 +57,7 @@ export default async function SyndicateDetailPage({
 
   return (
     <>
-      <TorusKnotBackground
-        radius={10}
-        tube={0.2}
-        tubularSegments={128}
-        radialSegments={16}
-        p={3}
-        q={4}
-        opacity={0.15}
-        fogDensity={0.08}
-      />
-      <div className="scanlines" style={{ opacity: 0.2 }} />
+      <AmbientBackground />
 
       <div className="layout layout-normal">
         <main className="px-4 md:px-8 lg:px-16 mx-auto w-full max-w-[1400px]">
@@ -140,6 +130,8 @@ export default async function SyndicateDetailPage({
               redemptionsLocked={data.redemptionsLocked}
               managementFeeBps={data.managementFeeBps}
               assetDecimals={data.assetDecimals}
+              vault={data.vault}
+              chainId={data.chainId}
             />
 
             {/* Agent Roster (only on chains with ERC-8004) — or LiveFeed side-by-side when no ERC-8004 and no EAS */}
