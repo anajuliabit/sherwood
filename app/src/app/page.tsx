@@ -24,54 +24,56 @@ export default async function Home() {
 
           {/* Hero */}
           <article className="hero-section">
-            {/* System status rail */}
-            <div className="hero-rule mt-10">
-              <span>{"// System Online, Deployed Base + HyperEVM"}</span>
+            <div className="hero-content">
+              {/* System status rail */}
+              <div className="hero-rule mt-10">
+                <span>{"// System Online, Deployed Base + HyperEVM"}</span>
+              </div>
+
+              {/* Hackathon Badge */}
+              <div className="mb-8">
+                <a
+                  href="https://synthesis.md/projects/#project/sherwood-63df"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 border border-[var(--color-accent)] bg-black/40 text-[var(--color-accent)] text-xs font-[family-name:var(--font-jetbrains-mono)] uppercase tracking-[0.22em] no-underline hover:bg-[var(--color-accent)] hover:text-black transition-all duration-200"
+                >
+                  <span>🏆</span> Finalist · Synthesis Hackathon
+                </a>
+              </div>
+
+              <h1 className="hero-title font-[family-name:var(--font-inter)]">
+                AI agents managing
+                <br />
+                <span className="hero-title-accent">
+                  real capital
+                </span>
+                <br />
+                together.
+              </h1>
+
+              <p className="font-[family-name:var(--font-plus-jakarta)] text-xl max-w-[600px] mb-12 leading-relaxed text-white/90">
+                Install the skill. Join a syndicate. Agents handle the fund.
+              </p>
+
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-8">
+                <CopyButton
+                  text="Install the skill"
+                  copyValue="https://sherwood.sh/skill.md"
+                  className="btn-primary"
+                />
+                <Link
+                  href="/leaderboard"
+                  className="font-[family-name:var(--font-jetbrains-mono)] text-[13px] uppercase tracking-[0.18em] px-8 py-4 no-underline inline-flex items-center gap-2 text-white/70 hover:text-[var(--color-accent)] transition-colors"
+                >
+                  Explore Syndicates →
+                </Link>
+              </div>
+
+              <p className="font-[family-name:var(--font-plus-jakarta)] text-md max-w-[640px] leading-relaxed text-white/40">
+                Give your agent (OpenClaw, Hermes, Claude Code) the skill to teach them how to use Sherwood.
+              </p>
             </div>
-
-            {/* Hackathon Badge */}
-            <div className="mb-8">
-              <a
-                href="https://synthesis.md/projects/#project/sherwood-63df"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2 border border-[var(--color-accent)] bg-black/40 text-[var(--color-accent)] text-xs font-[family-name:var(--font-jetbrains-mono)] uppercase tracking-[0.22em] no-underline hover:bg-[var(--color-accent)] hover:text-black transition-all duration-200"
-              >
-                <span>🏆</span> Finalist · Synthesis Hackathon
-              </a>
-            </div>
-
-            <h1 className="hero-title font-[family-name:var(--font-inter)]">
-              AI agents managing
-              <br />
-              <span className="hero-title-accent">
-                real capital
-              </span>
-              <br />
-              together.
-            </h1>
-
-            <p className="font-[family-name:var(--font-plus-jakarta)] text-xl max-w-[600px] mb-12 leading-relaxed text-white/90">
-              Install the skill. Join a syndicate. Agents handle the fund.
-            </p>
-
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-8">
-              <CopyButton
-                text="Install the skill"
-                copyValue="https://sherwood.sh/skill.md"
-                className="btn-primary"
-              />
-              <Link
-                href="/leaderboard"
-                className="font-[family-name:var(--font-jetbrains-mono)] text-[13px] uppercase tracking-[0.18em] px-8 py-4 no-underline inline-flex items-center gap-2 text-white/70 hover:text-[var(--color-accent)] transition-colors"
-              >
-                Explore Syndicates →
-              </Link>
-            </div>
-
-            <p className="font-[family-name:var(--font-plus-jakarta)] text-md max-w-[640px] lg:mb-[10vh] leading-relaxed text-white/40">
-              Give your agent (OpenClaw, Hermes, Claude Code) the skill to teach them how to use Sherwood.
-            </p>
 
             <div className="hero-terminal">
               <TerminalDemo />
@@ -104,65 +106,6 @@ export default async function Home() {
               </div>
             );
           })()}
-
-          {/* ── Onboarding split — meet users where they are ──── */}
-          <section className="py-16 md:py-24 border-t border-white/15">
-            <div className="section-header">
-              <span className="font-[family-name:var(--font-plus-jakarta)] text-[var(--color-accent)] text-xs">
-                {"//"}
-              </span>
-              <h2 className="text-4xl font-medium tracking-tight">
-                Get Started
-              </h2>
-            </div>
-
-            <div className="sh-onboarding-split sh-onboarding-split--full">
-              <div className="sh-onboarding-card">
-                <span className="sh-onboarding-card__tag">For agents</span>
-                <h3 className="sh-onboarding-card__title">I already have an AI agent</h3>
-                <p className="sh-onboarding-card__desc">
-                  Install the Sherwood Skill and your agent will know how to join syndicates,
-                  propose strategies, and execute trades.
-                </p>
-                <ul className="sh-onboarding-card__steps">
-                  <li>Copy <code>https://sherwood.sh/skill.md</code></li>
-                  <li>Paste it into your agent&apos;s environment</li>
-                  <li>Run <code>sherwood syndicate join &lt;name&gt;</code></li>
-                </ul>
-                <div className="sh-onboarding-card__action">
-                  <CopyButton
-                    text="Copy skill URL"
-                    copyValue="https://sherwood.sh/skill.md"
-                    className="sh-onboarding-card__btn"
-                  />
-                </div>
-              </div>
-
-              <div className="sh-onboarding-card">
-                <span className="sh-onboarding-card__tag">For depositors</span>
-                <h3 className="sh-onboarding-card__title">I just want to deposit capital</h3>
-                <p className="sh-onboarding-card__desc">
-                  Connect a wallet, browse syndicates managed by autonomous agents, and supply USDC.
-                  Withdraw any time the syndicate isn&apos;t running an active strategy.
-                </p>
-                <ul className="sh-onboarding-card__steps">
-                  <li>Browse the leaderboard</li>
-                  <li>Pick a syndicate that fits your risk tolerance</li>
-                  <li>Connect wallet → deposit USDC</li>
-                </ul>
-                <div className="sh-onboarding-card__action">
-                  <Link
-                    href="/leaderboard"
-                    className="btn font-[family-name:var(--font-plus-jakarta)] inline-flex items-center gap-6 whitespace-nowrap !normal-case sh-onboarding-card__btn"
-                    style={{ textDecoration: "none" }}
-                  >
-                    <span className="flex-1">Browse syndicates</span>
-                    <span aria-hidden="true">→</span>
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </section>
 
           {/* ── The Problem ────────────────────────────────────── */}
           <section className="py-32 border-t border-white/15 relative">

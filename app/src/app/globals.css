@@ -796,13 +796,20 @@ select:focus-visible {
 }
 
 /* ── Hero ───────────────────────────────────────────────── */
+/* Mobile / tablet: single-column flow. Terminal renders inline below copy.
+   Wide screens: flex row — text column on the left, terminal column on the
+   right, vertically centered with the H1 area. */
 
 .hero-section {
   position: relative;
   min-height: 90vh;
-  display: grid;
-  grid-template-columns: 1fr;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.hero-content {
+  display: contents; /* Mobile default — children participate in hero-section's flow */
 }
 
 .hero-terminal {
@@ -816,23 +823,22 @@ select:focus-visible {
   margin: 0 auto;
 }
 
-/* Two-column layout on wide screens — text on the left, terminal on the right.
-   Replaces the old position: absolute; bottom: 10rem; right: 0 which kept
-   overlapping content below the hero on different viewport heights. */
 @media (min-width: 1280px) {
   .hero-section {
-    grid-template-columns: minmax(0, 1fr) auto;
+    flex-direction: row;
+    align-items: center;
     column-gap: 3rem;
-    align-items: end;
   }
-  .hero-section > *:not(.hero-terminal) {
-    grid-column: 1;
+  .hero-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-width: 0;
   }
   .hero-terminal {
-    grid-column: 2;
-    grid-row: 1 / -1;
-    align-self: end;
-    margin: 0 0 4rem;
+    flex: 0 0 auto;
+    margin: 0;
+    align-self: center;
   }
   .hero-terminal .terminal-demo {
     width: 500px;
