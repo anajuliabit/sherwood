@@ -89,9 +89,6 @@ select:focus-visible {
   font-feature-settings: "zero", "ss02";
 }
 
-/* Warm accent used sparingly on serif moments */
-.ink-parchment { color: var(--color-parchment); }
-
 /* ── Design Primitives (second pass) ────────────────────── */
 
 /* Bracketed status tag — e.g. [ONLINE], [ENABLED], [COMPLETE].

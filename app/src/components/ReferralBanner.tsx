@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore, useState } from "react";
 import CopyButton from "./CopyButton";
 
 interface ReferralBannerProps {
@@ -12,42 +12,70 @@ const STORAGE_PREFIX = "sherwood_referrer:";
 const DISMISS_PREFIX = "sherwood_referrer_dismissed:";
 
 /**
- * Shows a "Join this syndicate" banner when a visitor arrives via a referral link
- * (e.g., /syndicate/atlas?ref=42). The skill URL carries the subdomain and
- * referrer so the agent's CLI can automatically join with the right context.
+ * Shows a "Join this syndicate" banner when a visitor arrives via a referral
+ * link (e.g., /syndicate/atlas?ref=42). The skill URL carries the subdomain
+ * and referrer so the agent's CLI can join with the right context.
  *
  * - localStorage is keyed per-subdomain so two referral links to two syndicates
  *   no longer overwrite each other (was: single global `sherwood_referrer`).
  * - Dismissible per-subdomain. Dismissal persists across reloads.
+ *
+ * Uses useSyncExternalStore for SSR-safe localStorage subscription —
+ * avoids the setState-in-effect anti-pattern.
  */
+
+function subscribe(callback: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener("storage", callback);
+  return () => window.removeEventListener("storage", callback);
+}
+
+function makeSnapshotGetter(key: string) {
+  return () => {
+    if (typeof window === "undefined") return null;
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  };
+}
+
 export default function ReferralBanner({ subdomain }: ReferralBannerProps) {
   const searchParams = useSearchParams();
   const refParam = searchParams.get("ref");
-  const [storedRef, setStoredRef] = useState<string | null>(null);
-  const [dismissed, setDismissed] = useState(false);
 
-  // Hydrate from URL or storage. URL wins.
-  useEffect(() => {
+  const cachedRef = useSyncExternalStore(
+    subscribe,
+    makeSnapshotGetter(`${STORAGE_PREFIX}${subdomain}`),
+    () => null,
+  );
+  const dismissedFlag = useSyncExternalStore(
+    subscribe,
+    makeSnapshotGetter(`${DISMISS_PREFIX}${subdomain}`),
+    () => null,
+  );
+
+  // Local override so dismissing closes the banner immediately
+  const [dismissedNow, setDismissedNow] = useState(false);
+
+  // Persist URL ref to localStorage when it appears (event-driven side effect,
+  // not a render-time setState — runs once per real refParam change).
+  if (
+    typeof window !== "undefined" &&
+    refParam &&
+    refParam !== cachedRef
+  ) {
     try {
-      const dismissedFlag = localStorage.getItem(`${DISMISS_PREFIX}${subdomain}`);
-      if (dismissedFlag === "1") {
-        setDismissed(true);
-        return;
-      }
-      if (refParam) {
-        localStorage.setItem(`${STORAGE_PREFIX}${subdomain}`, refParam);
-        setStoredRef(refParam);
-      } else {
-        const cached = localStorage.getItem(`${STORAGE_PREFIX}${subdomain}`);
-        if (cached) setStoredRef(cached);
-      }
+      localStorage.setItem(`${STORAGE_PREFIX}${subdomain}`, refParam);
     } catch {
-      // localStorage may be unavailable in some embedded contexts — silently no-op
+      // ignore
     }
-  }, [refParam, subdomain]);
+  }
 
-  const effectiveRef = refParam ?? storedRef;
-  if (!effectiveRef || dismissed) return null;
+  const effectiveRef = refParam ?? cachedRef;
+  const isDismissed = dismissedFlag === "1" || dismissedNow;
+  if (!effectiveRef || isDismissed) return null;
 
   const skillUrl = `https://sherwood.sh/skill.md?subdomain=${encodeURIComponent(subdomain)}&ref=${encodeURIComponent(effectiveRef)}`;
 
@@ -57,7 +85,7 @@ export default function ReferralBanner({ subdomain }: ReferralBannerProps) {
     } catch {
       // ignore
     }
-    setDismissed(true);
+    setDismissedNow(true);
   }
 
   return (

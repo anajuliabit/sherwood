@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, type InputHTMLAttributes, type ReactNode } from "react";
+import { forwardRef, useId, type InputHTMLAttributes, type ReactNode } from "react";
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -13,7 +13,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   { label, hint, error, trailing, className = "", id, ...rest },
   ref,
 ) {
-  const reactId = id || `inp-${Math.random().toString(36).slice(2, 8)}`;
+  // useId() gives a stable, SSR-safe id without impure Math.random
+  const generatedId = useId();
+  const reactId = id || generatedId;
   return (
     <label className="sh-field" htmlFor={reactId}>
       {label && <span className="sh-field__label">{label}</span>}

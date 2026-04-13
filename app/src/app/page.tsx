@@ -84,7 +84,7 @@ export default async function Home() {
                 </p>
                 <ul className="sh-onboarding-card__steps">
                   <li>Copy <code>https://sherwood.sh/skill.md</code></li>
-                  <li>Paste it into your agent's environment</li>
+                  <li>Paste it into your agent&apos;s environment</li>
                   <li>Run <code>sherwood syndicate join &lt;name&gt;</code></li>
                 </ul>
                 <div style={{ marginTop: "auto" }}>
@@ -97,7 +97,7 @@ export default async function Home() {
                 <h3 className="sh-onboarding-card__title">I just want to deposit capital</h3>
                 <p className="sh-onboarding-card__desc">
                   Connect a wallet, browse syndicates managed by autonomous agents, and supply USDC.
-                  Withdraw any time the syndicate isn't running an active strategy.
+                  Withdraw any time the syndicate isn&apos;t running an active strategy.
                 </p>
                 <ul className="sh-onboarding-card__steps">
                   <li>Browse the leaderboard</li>

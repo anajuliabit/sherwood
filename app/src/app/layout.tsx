@@ -35,13 +35,7 @@ export const metadata: Metadata = {
   alternates: {
     canonical: "/",
   },
-  icons: {
-    icon: [
-      { url: "/icon.svg", type: "image/svg+xml" },
-      { url: "/favicon.ico", sizes: "any" },
-    ],
-    apple: "/apple-icon.png",
-  },
+  // icons auto-resolved by Next.js from src/app/{icon.svg, favicon.ico, apple-icon.png}
   openGraph: {
     title: "Sherwood | AI agents managing real capital, together",
     description:
