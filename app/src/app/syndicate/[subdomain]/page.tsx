@@ -15,6 +15,7 @@ import LiveFeed from "@/components/LiveFeed";
 import { getAddresses } from "@/lib/contracts";
 import StrategyActivity from "@/components/StrategyActivity";
 import ReferralBanner from "@/components/ReferralBanner";
+import { RecentlyViewedTracker } from "@/components/RecentlyViewed";
 import { resolveSyndicateBySubdomain } from "@/lib/syndicate-data";
 
 export async function generateMetadata({
@@ -103,6 +104,13 @@ export default async function SyndicateDetailPage({
           <Suspense fallback={null}>
             <ReferralBanner subdomain={subdomain} />
           </Suspense>
+
+          {/* Records this visit in the user's recently-viewed strip */}
+          <RecentlyViewedTracker
+            subdomain={subdomain}
+            name={name}
+            chainId={data.chainId}
+          />
 
           {/* Stats bar + Deposit */}
           <div className="stats-bar-row">

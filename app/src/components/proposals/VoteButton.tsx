@@ -12,12 +12,19 @@ interface VoteButtonProps {
   governorAddress: Address;
   proposalId: bigint;
   voteEnd: bigint;
+  /** Fired on tx submit so the parent can apply an optimistic vote-bar update. */
+  onOptimistic?: (weight: bigint, support: 0 | 1) => void;
+  /** Fired on tx confirm OR error so the parent can drop the optimistic overlay
+   *  (router.refresh re-fetches the canonical onchain numbers). */
+  onResolved?: () => void;
 }
 
 export default function VoteButton({
   governorAddress,
   proposalId,
   voteEnd,
+  onOptimistic,
+  onResolved,
 }: VoteButtonProps) {
   const router = useRouter();
   const toast = useToast();
@@ -67,17 +74,24 @@ export default function VoteButton({
         `Proposal #${proposalId.toString()} — your vote is recorded onchain.`,
       );
       router.refresh();
+      // Drop the optimistic overlay — refresh will pull canonical numbers.
+      onResolved?.();
     }
-  }, [isConfirmed, router, txHash, governorAddress, proposalId, toast]);
+  }, [isConfirmed, router, txHash, governorAddress, proposalId, toast, onResolved]);
 
   const busy = isPending || isConfirming;
   const explorerUrl = getAddresses(chainId)?.blockExplorer;
 
-  function castVote(support: number) {
+  function castVote(support: 0 | 1) {
     // Re-check at click time to prevent submitting after deadline
     if (voteEnd <= BigInt(Math.floor(Date.now() / 1000))) {
       setVotingEnded(true);
       return;
+    }
+    // Apply optimistic overlay BEFORE writeContract so the UI updates the
+    // moment the user clicks (before the wallet popup even appears).
+    if (voteWeight && voteWeight > 0n) {
+      onOptimistic?.(voteWeight, support);
     }
     writeContract(
       {
@@ -91,6 +105,9 @@ export default function VoteButton({
         onError: (err) => {
           const reason = classifyError(err);
           trackTxFailed("vote", governorAddress, reason);
+          // Roll back the optimistic overlay on submission failure (rejected
+          // signatures, RPC errors, etc.) so the bar reverts immediately.
+          onResolved?.();
           if (reason !== "user_rejected") {
             const msg = (err as { shortMessage?: string }).shortMessage || err.message;
             toast.error("Vote failed", msg);

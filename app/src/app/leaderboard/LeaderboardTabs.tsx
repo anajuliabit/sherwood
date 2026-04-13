@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { CHAIN_BADGES, truncateAddress } from "@/lib/contracts";
 import type { SyndicateDisplay } from "@/lib/syndicates";
@@ -8,6 +9,7 @@ import { Input } from "@/components/ui/Input";
 import { Tabs } from "@/components/ui/Tabs";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { RecentlyViewedStrip } from "@/components/RecentlyViewed";
 
 const PAGE_SIZE = 25;
 const WATCHLIST_KEY = "sherwood_watchlist";
@@ -196,16 +198,54 @@ function NewBadge({ ageDays }: { ageDays?: number }) {
 }
 
 export default function LeaderboardTabs({ syndicates }: LeaderboardTabsProps) {
+  // Deep-link support: ?syndicate=<subdomain> jumps to the row, scrolls into
+  // view, briefly flashes accent. Designed for shared links (watchlist /
+  // social) so they land on the right entry without manual filtering.
+  const searchParams = useSearchParams();
+  const deepLinkSubdomain = searchParams.get("syndicate");
+
+  // Compute the deep-link target's page once at mount via lazy initializer
+  // so we don't need a setState-in-effect on first render.
+  const deepLinkPage = useMemo(() => {
+    if (!deepLinkSubdomain) return 0;
+    const idx = syndicates.findIndex((s) => s.subdomain === deepLinkSubdomain);
+    return idx >= 0 ? Math.floor(idx / PAGE_SIZE) : 0;
+  }, [deepLinkSubdomain, syndicates]);
+
   const [tab, setTab] = useState<TabId>("syndicates");
   const [query, setQuery] = useState("");
   const [chain, setChain] = useState<ChainFilter>("all");
   const [status, setStatus] = useState<StatusFilter>("all");
-  const [page, setPage] = useState(0);
+  const [page, setPage] = useState<number>(() => deepLinkPage);
   const [showWatchlistOnly, setShowWatchlistOnly] = useState(false);
+  const [flashedKey, setFlashedKey] = useState<string | null>(null);
   const watchlist = useWatchlist();
 
   // Reset page when filters change
   const resetPage = useCallback(() => setPage(0), []);
+
+  const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
+
+  // Scroll + flash for deep-link target. Effect only handles the external
+  // side-effect (scrollIntoView) and a timer-driven flash state — no
+  // synchronous setState that depends on render-time props.
+  useEffect(() => {
+    if (!deepLinkSubdomain) return;
+    const match = syndicates.find((s) => s.subdomain === deepLinkSubdomain);
+    if (!match) return;
+    const key = `${match.chainId}-${match.id}`;
+
+    const scrollId = setTimeout(() => {
+      const el = rowRefs.current.get(key);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      setFlashedKey(key);
+    }, 120);
+    const fadeId = setTimeout(() => setFlashedKey(null), 2600);
+    return () => {
+      clearTimeout(scrollId);
+      clearTimeout(fadeId);
+    };
+  }, [deepLinkSubdomain, syndicates]);
 
   const agents = useMemo(
     () =>
@@ -274,6 +314,8 @@ export default function LeaderboardTabs({ syndicates }: LeaderboardTabsProps) {
 
   return (
     <div className="font-[family-name:var(--font-plus-jakarta)]">
+      <RecentlyViewedStrip />
+
       <Tabs<TabId>
         items={[
           { id: "syndicates", label: "Syndicates", count: syndicates.length },
@@ -425,8 +467,17 @@ export default function LeaderboardTabs({ syndicates }: LeaderboardTabsProps) {
                   // Absolute rank index — page offset + position in current page
                   const rankIdx = safePage * PAGE_SIZE + i;
                   const watchKey = `${s.chainId}:${s.id}`;
+                  const rowKey = `${s.chainId}-${s.id}`;
+                  const isFlashed = flashedKey === rowKey;
                   return (
-                    <tr key={`${s.chainId}-${s.id}`} className={rankIdx === 0 ? "lb-row-top1" : undefined}>
+                    <tr
+                      key={rowKey}
+                      ref={(el) => {
+                        if (el) rowRefs.current.set(rowKey, el);
+                        else rowRefs.current.delete(rowKey);
+                      }}
+                      className={`${rankIdx === 0 ? "lb-row-top1 " : ""}${isFlashed ? "lb-row-flash" : ""}`.trim() || undefined}
+                    >
                       <td>
                         <StarButton
                           active={watchlist.has(watchKey)}

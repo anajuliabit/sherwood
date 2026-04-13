@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import { type Address } from "viem";
 import {
   type ProposalData,
@@ -10,6 +13,16 @@ import VoteButton from "./VoteButton";
 import ExecutionCallPreview from "./ExecutionCallPreview";
 import VoteConcentration from "./VoteConcentration";
 import { ProposalStepper } from "@/components/ui/ProposalStepper";
+
+/**
+ * Optimistic vote state — added to the on-chain count between tx submit
+ * and tx receipt. Cleared on confirmed (a router.refresh follows) or on
+ * error (so we don't keep a phantom vote in the bar).
+ */
+export interface OptimisticVote {
+  weight: bigint;
+  support: 0 | 1; // 0 = FOR, 1 = AGAINST
+}
 
 interface ProposalCardProps {
   proposal: ProposalData;
@@ -34,15 +47,26 @@ export default function ProposalCard({
   chainId,
   explorerUrl,
 }: ProposalCardProps) {
+  const [optimistic, setOptimistic] = useState<OptimisticVote | null>(null);
+
   const title =
     proposal.metadata?.title || `Proposal #${proposal.id.toString()}`;
   const description = proposal.metadata?.description?.trim() || "";
   const truncatedDescription =
     description.length > 180 ? `${description.slice(0, 177)}...` : description;
-  const totalVotes = proposal.votesFor + proposal.votesAgainst;
+
+  // Apply optimistic delta to the on-chain numbers so the vote bar updates
+  // instantly on submit. The actual chain values get re-fetched on
+  // router.refresh() after the tx confirms; we then drop the optimistic
+  // overlay (handled by VoteButton's onConfirm callback below).
+  const votesFor =
+    proposal.votesFor + (optimistic?.support === 0 ? optimistic.weight : 0n);
+  const votesAgainst =
+    proposal.votesAgainst + (optimistic?.support === 1 ? optimistic.weight : 0n);
+  const totalVotes = votesFor + votesAgainst;
   const forPct =
     totalVotes > 0n
-      ? Number((proposal.votesFor * 10000n) / totalVotes) / 100
+      ? Number((votesFor * 10000n) / totalVotes) / 100
       : 0;
   const againstPct = totalVotes > 0n ? 100 - forPct : 0;
 
@@ -175,6 +199,10 @@ export default function ProposalCard({
                 governorAddress={governorAddress}
                 proposalId={proposal.id}
                 voteEnd={proposal.voteEnd}
+                onOptimistic={(weight, support) =>
+                  setOptimistic({ weight, support })
+                }
+                onResolved={() => setOptimistic(null)}
               />
             )}
           </div>

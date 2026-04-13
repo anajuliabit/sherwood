@@ -9,6 +9,7 @@
 import { NextResponse } from "next/server";
 import { isAddress } from "viem";
 import { quoteAllTokenPrices } from "@/lib/price-quote";
+import { makeRateLimit } from "@/lib/rate-limit";
 import type { Address } from "viem";
 
 interface CacheEntry {
@@ -21,23 +22,7 @@ const cache = new Map<string, CacheEntry>();
 const CACHE_TTL = 30_000; // 30s
 const MAX_TOKENS_PER_REQUEST = 25;
 
-// Lightweight in-memory rate limit (per-instance). Production deployments
-// behind multiple instances should swap this for an external store (Redis).
-const rateLimit = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT_WINDOW_MS = 60_000;
-const RATE_LIMIT_MAX = 60;
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const entry = rateLimit.get(ip);
-  if (!entry || entry.resetAt < now) {
-    rateLimit.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return true;
-  }
-  if (entry.count >= RATE_LIMIT_MAX) return false;
-  entry.count++;
-  return true;
-}
+const checkRateLimit = makeRateLimit({ windowMs: 60_000, max: 60 });
 
 function buildCacheKey(chainId: number, asset: string, tokens: string[]): string {
   return `${chainId}:${asset}:${[...tokens].sort().join(",")}`;
@@ -45,11 +30,7 @@ function buildCacheKey(chainId: number, asset: string, tokens: string[]): string
 
 export async function POST(req: Request) {
   try {
-    const ip =
-      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-      req.headers.get("x-real-ip") ||
-      "unknown";
-    if (!checkRateLimit(ip)) {
+    if (!checkRateLimit(req)) {
       return NextResponse.json(
         { error: "Rate limit exceeded — try again in a minute." },
         { status: 429 },
