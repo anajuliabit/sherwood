@@ -13,12 +13,15 @@ import {
   getPublicClient,
   SYNDICATE_FACTORY_ABI,
   SYNDICATE_VAULT_ABI,
+  SYNDICATE_GOVERNOR_ABI,
   ERC20_ABI,
   IDENTITY_REGISTRY_ABI,
   L2_REGISTRY_ABI,
   formatAsset,
   formatBps,
 } from "./contracts";
+
+const ZERO: Address = "0x0000000000000000000000000000000000000000";
 import {
   fetchSyndicateAttestations,
   type AttestationItem,
@@ -307,6 +310,7 @@ async function resolveOnChain(
         functionName: "managementFeeBps",
       },
       { address: vault, abi: SYNDICATE_VAULT_ABI, functionName: "asset" },
+      { address: vault, abi: SYNDICATE_VAULT_ABI, functionName: "governor" },
     ],
   });
 
@@ -319,9 +323,37 @@ async function resolveOnChain(
   const redemptionsLocked = (vaultResults[6].result as boolean) ?? false;
   const managementFeeBps = (vaultResults[7].result as bigint) ?? 0n;
   const assetAddress = (vaultResults[8].result as Address) ?? addresses.usdc;
+  const governorAddress = (vaultResults[9].result as Address) ?? ZERO;
 
-  // TVL is the onchain totalAssets — the vault's actual asset balance
-  const effectiveTotalAssets = totalAssets;
+  // When a strategy is active, the vault's totalAssets only reflects what
+  // remains in the vault itself — the deployed capital has left. For TVL /
+  // "Your Value" display we want the full capital under management, so
+  // fall back to the proposal's capitalSnapshot (the vault balance at the
+  // moment of execution).
+  let effectiveTotalAssets = totalAssets;
+  if (redemptionsLocked && governorAddress !== ZERO) {
+    try {
+      const activeId = (await client.readContract({
+        address: governorAddress,
+        abi: SYNDICATE_GOVERNOR_ABI,
+        functionName: "getActiveProposal",
+        args: [vault],
+      })) as bigint;
+      if (activeId > 0n) {
+        const snapshot = (await client.readContract({
+          address: governorAddress,
+          abi: SYNDICATE_GOVERNOR_ABI,
+          functionName: "getCapitalSnapshot",
+          args: [activeId],
+        })) as bigint;
+        // Use the larger of (current vault balance, capital snapshot) — covers
+        // both the all-deployed case (vault ≈ 0) and partial-deployment case.
+        if (snapshot > effectiveTotalAssets) effectiveTotalAssets = snapshot;
+      }
+    } catch {
+      // fall back to raw totalAssets
+    }
+  }
 
   // Step 2c: Get asset decimals + symbol
   const assetInfoResults = await client.multicall({

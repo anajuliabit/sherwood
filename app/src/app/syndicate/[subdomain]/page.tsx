@@ -98,6 +98,8 @@ export default async function SyndicateDetailPage({
             assetSymbol={data.assetSymbol}
             activeTab="vault"
             hideAgentsTab={!hasIdentityRegistry}
+            effectiveTotalAssets={data.totalAssets}
+            totalSupply={data.totalSupply}
           />
 
           {/* Referral banner — shown when visitor arrives via ?ref=<agentId> */}
