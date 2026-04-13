@@ -39,6 +39,183 @@ body {
 /* Warm accent used sparingly on serif moments */
 .ink-parchment { color: var(--color-parchment); }
 
+/* ── Design Primitives (second pass) ────────────────────── */
+
+/* Bracketed status tag — e.g. [ONLINE], [ENABLED], [COMPLETE].
+   A recurring structural motif instead of one-off custom pills. */
+.tag-bracket {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+}
+.tag-bracket::before { content: "["; opacity: 0.55; }
+.tag-bracket::after { content: "]"; opacity: 0.55; }
+
+.tag-bracket--warn { color: #eab308; }
+.tag-bracket--mute { color: rgba(255, 255, 255, 0.45); }
+
+/* Section index — e.g. §1.01, P.03, Q.07. Displayed beside headings.
+   Reads as a legal/operations catalogue, not generic Web3. */
+.ref-index {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  color: rgba(232, 220, 192, 0.55);
+  text-transform: uppercase;
+}
+
+/* Display card used for Problem/Security/FAQ — hairline border,
+   subtle top accent that animates on hover. */
+.spec-card {
+  position: relative;
+  padding: 2rem 1.75rem;
+  border: 1px solid var(--color-border-soft);
+  background: rgba(255, 255, 255, 0.012);
+  transition: border-color 0.25s ease, background 0.25s ease;
+}
+
+.spec-card::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  width: 32px;
+  height: 1px;
+  background: var(--color-accent);
+  transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.spec-card:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.spec-card:hover::before {
+  width: calc(100% + 2px);
+}
+
+.spec-card__index {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: var(--color-accent);
+  opacity: 0.75;
+  display: block;
+  margin-bottom: 1rem;
+}
+
+.spec-card__title {
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: #fff;
+  letter-spacing: -0.01em;
+  margin-bottom: 0.75rem;
+}
+
+.spec-card__body {
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  color: rgba(255, 255, 255, 0.6);
+  line-height: 1.55;
+}
+
+/* FAQ item — detail/summary pair with left accent and rotating chevron */
+.faq-item {
+  border-top: 1px solid var(--color-border-soft);
+  padding: 1.25rem 0 1.25rem 1.5rem;
+  position: relative;
+  transition: border-color 0.2s ease;
+}
+
+.faq-item:last-child {
+  border-bottom: 1px solid var(--color-border-soft);
+}
+
+.faq-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 1.25rem;
+  bottom: 1.25rem;
+  width: 2px;
+  background: transparent;
+  transition: background 0.2s ease;
+}
+
+.faq-item[open]::before {
+  background: var(--color-accent);
+}
+
+.faq-item > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.92);
+  transition: color 0.2s ease;
+}
+
+.faq-item > summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq-item > summary:hover {
+  color: var(--color-accent);
+}
+
+.faq-item__ref {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  color: rgba(46, 230, 166, 0.7);
+  flex-shrink: 0;
+  min-width: 3em;
+}
+
+.faq-item__chev {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.35);
+  transition: transform 0.25s ease, color 0.25s ease;
+}
+
+.faq-item[open] .faq-item__chev {
+  transform: rotate(45deg);
+  color: var(--color-accent);
+}
+
+.faq-item__body {
+  margin-top: 0.85rem;
+  padding-left: calc(3em + 1rem);
+  font-size: 13.5px;
+  color: rgba(255, 255, 255, 0.6);
+  line-height: 1.65;
+}
+
+/* Horizontal progress rail used by roadmap phases */
+.progress-rail {
+  position: relative;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+
+.progress-rail__fill {
+  position: absolute;
+  inset: 0;
+  background: var(--color-accent);
+  transform-origin: left center;
+}
+
 /* ── Grain Texture Overlay ──────────────────────────────── */
 /* Replaces the old hard scanlines with a filmic noise — reads as
    refined rather than generic CRT. Kept subtle so it doesn't

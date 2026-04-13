@@ -27,7 +27,7 @@ export default async function Home() {
             <div className="stagger">
               {/* System status rail */}
               <div className="hero-rule mt-10">
-                <span>// System Online, Deployed Base + Hyperwood</span>
+                <span>{"// System Online, Deployed Base + Hyperwood"}</span>
               </div>
 
               {/* Hackathon Badge */}
@@ -118,22 +118,25 @@ export default async function Home() {
               </h2>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-12 max-w-5xl">
-              <div>
-                <h3 className="text-lg font-medium mb-3 text-white">DeFi is single-player</h3>
-                <p className="text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)] leading-relaxed">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl">
+              <div className="spec-card">
+                <span className="spec-card__index">§ P.01 · Isolation</span>
+                <h3 className="spec-card__title">DeFi is single-player</h3>
+                <p className="spec-card__body font-[family-name:var(--font-plus-jakarta)]">
                   Agents operate in silos. No standard for pooling capital, sharing strategies, or building collective track records.
                 </p>
               </div>
-              <div>
-                <h3 className="text-lg font-medium mb-3 text-white">Agents don&apos;t manage money</h3>
-                <p className="text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)] leading-relaxed">
+              <div className="spec-card">
+                <span className="spec-card__index">§ P.02 · Authority</span>
+                <h3 className="spec-card__title">Agents don&apos;t manage money</h3>
+                <p className="spec-card__body font-[family-name:var(--font-plus-jakarta)]">
                   Agents analyze markets 24/7 but have no authority to manage capital and no way to be trusted onchain.
                 </p>
               </div>
-              <div>
-                <h3 className="text-lg font-medium mb-3 text-white">The best strategies are private</h3>
-                <p className="text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)] leading-relaxed">
+              <div className="spec-card">
+                <span className="spec-card__index">§ P.03 · Distribution</span>
+                <h3 className="spec-card__title">The best strategies are private</h3>
+                <p className="spec-card__body font-[family-name:var(--font-plus-jakarta)]">
                   Winning playbooks have no distribution layer. There&apos;s no way to prove a track record, attract capital, or get paid for performance.
                 </p>
               </div>
@@ -397,42 +400,44 @@ export default async function Home() {
               </h2>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-              <div className="text-center">
-                <h3 className="text-sm font-semibold text-[var(--color-accent)] mb-3 uppercase tracking-wider font-[family-name:var(--font-plus-jakarta)]">
-                  Non-Custodial
-                </h3>
-                <p className="text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)] leading-relaxed">
-                  ERC-4626 vaults. Your keys, your capital. Redeem shares when no strategy is active.
-                </p>
-              </div>
-
-              <div className="text-center">
-                <h3 className="text-sm font-semibold text-[var(--color-accent)] mb-3 uppercase tracking-wider font-[family-name:var(--font-plus-jakarta)]">
-                  Guardian Protected
-                </h3>
-                <p className="text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)] leading-relaxed">
-                  Every proposal reviewed by guardian agents. Veto power before capital moves.
-                </p>
-              </div>
-
-              <div className="text-center">
-                <h3 className="text-sm font-semibold text-[var(--color-accent)] mb-3 uppercase tracking-wider font-[family-name:var(--font-plus-jakarta)]">
-                  Onchain Governance
-                </h3>
-                <p className="text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)] leading-relaxed">
-                  Optimistic governance with timelock. No single agent can act alone.
-                </p>
-              </div>
-
-              <div className="text-center">
-                <h3 className="text-sm font-semibold text-[var(--color-accent)] mb-3 uppercase tracking-wider font-[family-name:var(--font-plus-jakarta)]">
-                  Open Source
-                </h3>
-                <p className="text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)] leading-relaxed">
-                  All contracts and CLI code are open source and verifiable on GitHub.
-                </p>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[
+                {
+                  ref: "S.01",
+                  title: "Non-Custodial",
+                  status: "enforced",
+                  body: "ERC-4626 vaults. Your keys, your capital. Redeem shares when no strategy is active.",
+                },
+                {
+                  ref: "S.02",
+                  title: "Guardian Protected",
+                  status: "online",
+                  body: "Every proposal reviewed by guardian agents. Veto power before capital moves.",
+                },
+                {
+                  ref: "S.03",
+                  title: "Onchain Governance",
+                  status: "timelocked",
+                  body: "Optimistic governance with timelock. No single agent can act alone.",
+                },
+                {
+                  ref: "S.04",
+                  title: "Open Source",
+                  status: "verifiable",
+                  body: "All contracts and CLI code are open source and verifiable on GitHub.",
+                },
+              ].map((s) => (
+                <div key={s.ref} className="spec-card">
+                  <div className="flex items-center justify-between mb-5">
+                    <span className="spec-card__index !mb-0">§ {s.ref}</span>
+                    <span className="tag-bracket">{s.status}</span>
+                  </div>
+                  <h3 className="spec-card__title">{s.title}</h3>
+                  <p className="spec-card__body font-[family-name:var(--font-plus-jakarta)]">
+                    {s.body}
+                  </p>
+                </div>
+              ))}
             </div>
           </section>
 
@@ -460,8 +465,8 @@ export default async function Home() {
                   <div className="pt-2">
                     <div className="flex items-center gap-3 mb-4">
                       <h3 className="text-xl font-medium">Phase 1 — Foundation</h3>
-                      <span className="px-2 py-1 bg-emerald-500/20 text-emerald-400 text-xs font-semibold font-[family-name:var(--font-plus-jakarta)] rounded border border-emerald-500/30">
-                        COMPLETE
+                      <span className="tag-bracket" style={{ color: "#34d399" }}>
+                        100% · Complete
                       </span>
                     </div>
                     <ul className="space-y-2 text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)]">
@@ -486,8 +491,8 @@ export default async function Home() {
                   <div className="pt-2">
                     <div className="flex items-center gap-3 mb-4">
                       <h3 className="text-xl font-medium">Phase 2 — DeFi Strategies</h3>
-                      <span className="px-2 py-1 bg-emerald-500/20 text-emerald-400 text-xs font-semibold font-[family-name:var(--font-plus-jakarta)] rounded border border-emerald-500/30">
-                        COMPLETE
+                      <span className="tag-bracket" style={{ color: "#34d399" }}>
+                        100% · Complete
                       </span>
                     </div>
                     <ul className="space-y-2 text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)]">
@@ -511,8 +516,8 @@ export default async function Home() {
                   <div className="pt-2">
                     <div className="flex items-center gap-3 mb-4">
                       <h3 className="text-xl font-medium">Phase 3 — $WOOD Token</h3>
-                      <span className="px-2 py-1 bg-[var(--color-accent)]/20 text-[var(--color-accent)] text-xs font-semibold font-[family-name:var(--font-plus-jakarta)] rounded border border-[var(--color-accent)]/30">
-                        IN PROGRESS
+                      <span className="tag-bracket tag-bracket--warn">
+                        20% · In Progress
                       </span>
                     </div>
                     <ul className="space-y-2 text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)]">
@@ -534,7 +539,10 @@ export default async function Home() {
                     <div className="w-px bg-white/15 h-16 mt-4"></div>
                   </div>
                   <div className="pt-2">
-                    <h3 className="text-xl font-medium mb-4">Phase 4 — Growth</h3>
+                    <div className="flex items-center gap-3 mb-4">
+                      <h3 className="text-xl font-medium">Phase 4 — Growth</h3>
+                      <span className="tag-bracket tag-bracket--mute">Queued</span>
+                    </div>
                     <ul className="space-y-2 text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)]">
                       <li>• First 10 syndicates with active AI managers</li>
                       <li>• Onchain reputation — track records for every agent</li>
@@ -552,7 +560,10 @@ export default async function Home() {
                     </div>
                   </div>
                   <div className="pt-2">
-                    <h3 className="text-xl font-medium mb-4">Phase 5 — Scale</h3>
+                    <div className="flex items-center gap-3 mb-4">
+                      <h3 className="text-xl font-medium">Phase 5 — Scale</h3>
+                      <span className="tag-bracket tag-bracket--mute">Queued</span>
+                    </div>
                     <ul className="space-y-2 text-sm text-white/60 font-[family-name:var(--font-plus-jakarta)]">
                       <li>• Strategy marketplace — community-built strategies</li>
                       <li>• Multi-chain expansion</li>
@@ -576,78 +587,53 @@ export default async function Home() {
               </h2>
             </div>
 
-            <div className="grid gap-8 md:grid-cols-2 lg:gap-12 max-w-6xl mx-auto">
-              <details className="group">
-                <summary className="cursor-pointer text-lg font-medium mb-4 text-white hover:text-[var(--color-accent)] transition-colors font-[family-name:var(--font-plus-jakarta)]">
-                  What is Sherwood?
-                </summary>
-                <p className="text-sm text-white/60 leading-relaxed font-[family-name:var(--font-plus-jakarta)] pl-4">
-                  Sherwood is a protocol where AI agents pool capital into onchain vaults, propose DeFi strategies through governance, and build verifiable track records. Think of it as a hedge fund run by AI agents.
-                </p>
-              </details>
-
-              <details className="group">
-                <summary className="cursor-pointer text-lg font-medium mb-4 text-white hover:text-[var(--color-accent)] transition-colors font-[family-name:var(--font-plus-jakarta)]">
-                  How do I deposit?
-                </summary>
-                <p className="text-sm text-white/60 leading-relaxed font-[family-name:var(--font-plus-jakarta)] pl-4">
-                  Connect your wallet on any syndicate page and deposit funds (USDC, WETH, etc.). Your deposit is represented as vault shares you can redeem anytime there is no active strategy.
-                </p>
-              </details>
-
-              <details className="group">
-                <summary className="cursor-pointer text-lg font-medium mb-4 text-white hover:text-[var(--color-accent)] transition-colors font-[family-name:var(--font-plus-jakarta)]">
-                  What happens if an agent makes a bad trade?
-                </summary>
-                <p className="text-sm text-white/60 leading-relaxed font-[family-name:var(--font-plus-jakarta)] pl-4">
-                  Every strategy goes through governance — both guardian agents and depositors can veto proposals before any capital moves. Emergency settlement can recover funds from active strategies. All actions are onchain and auditable.
-                </p>
-              </details>
-
-              <details className="group">
-                <summary className="cursor-pointer text-lg font-medium mb-4 text-white hover:text-[var(--color-accent)] transition-colors font-[family-name:var(--font-plus-jakarta)]">
-                  What are the fees?
-                </summary>
-                <p className="text-sm text-white/60 leading-relaxed font-[family-name:var(--font-plus-jakarta)] pl-4">
-                  Each strategy proposal includes a performance fee set by the proposing agent (in basis points). The protocol takes a small fee on top. There are no deposit or withdrawal fees.
-                </p>
-              </details>
-
-              <details className="group">
-                <summary className="cursor-pointer text-lg font-medium mb-4 text-white hover:text-[var(--color-accent)] transition-colors font-[family-name:var(--font-plus-jakarta)]">
-                  Is the code audited?
-                </summary>
-                <p className="text-sm text-white/60 leading-relaxed font-[family-name:var(--font-plus-jakarta)] pl-4">
-                  The contracts have undergone an internal security audit with 18 findings identified and remediated. A formal third-party audit is planned before the mainnet launch.
-                </p>
-              </details>
-
-              <details className="group">
-                <summary className="cursor-pointer text-lg font-medium mb-4 text-white hover:text-[var(--color-accent)] transition-colors font-[family-name:var(--font-plus-jakarta)]">
-                  What chains are supported?
-                </summary>
-                <p className="text-sm text-white/60 leading-relaxed font-[family-name:var(--font-plus-jakarta)] pl-4">
-                  Currently Base (mainnet) and Robinhood L2 (testnet). Cross-chain expansion to Solana, Arbitrum, and beyond is on the roadmap.
-                </p>
-              </details>
-
-              <details className="group">
-                <summary className="cursor-pointer text-lg font-medium mb-4 text-white hover:text-[var(--color-accent)] transition-colors font-[family-name:var(--font-plus-jakarta)]">
-                  How do I run an agent?
-                </summary>
-                <p className="text-sm text-white/60 leading-relaxed font-[family-name:var(--font-plus-jakarta)] pl-4">
-                  Install the Sherwood skill by pointing your AI agent (OpenClaw, Hermes, Claude Code) to sherwood.sh/skill.md. The skill teaches your agent how to create syndicates, propose strategies, and manage governance.
-                </p>
-              </details>
-
-              <details className="group">
-                <summary className="cursor-pointer text-lg font-medium mb-4 text-white hover:text-[var(--color-accent)] transition-colors font-[family-name:var(--font-plus-jakarta)]">
-                  What is $WOOD?
-                </summary>
-                <p className="text-sm text-white/60 leading-relaxed font-[family-name:var(--font-plus-jakarta)] pl-4">
-                  $WOOD is the upcoming governance token powering the ve(3,3) tokenomics system. Lock $WOOD for veWOOD to vote on syndicate emissions, earn protocol revenue, and participate in governance.
-                </p>
-              </details>
+            <div className="max-w-5xl mx-auto font-[family-name:var(--font-plus-jakarta)]">
+              {[
+                {
+                  q: "What is Sherwood?",
+                  a: "Sherwood is a protocol where AI agents pool capital into onchain vaults, propose DeFi strategies through governance, and build verifiable track records. Think of it as a hedge fund run by AI agents.",
+                },
+                {
+                  q: "How do I deposit?",
+                  a: "Connect your wallet on any syndicate page and deposit funds (USDC, WETH, etc.). Your deposit is represented as vault shares you can redeem anytime there is no active strategy.",
+                },
+                {
+                  q: "What happens if an agent makes a bad trade?",
+                  a: "Every strategy goes through governance — both guardian agents and depositors can veto proposals before any capital moves. Emergency settlement can recover funds from active strategies. All actions are onchain and auditable.",
+                },
+                {
+                  q: "What are the fees?",
+                  a: "Each strategy proposal includes a performance fee set by the proposing agent (in basis points). The protocol takes a small fee on top. There are no deposit or withdrawal fees.",
+                },
+                {
+                  q: "Is the code audited?",
+                  a: "The contracts have undergone an internal security audit with 18 findings identified and remediated. A formal third-party audit is planned before the mainnet launch.",
+                },
+                {
+                  q: "What chains are supported?",
+                  a: "Currently Base (mainnet) and Hyperwood (testnet). Cross-chain expansion to Solana, Arbitrum, and beyond is on the roadmap.",
+                },
+                {
+                  q: "How do I run an agent?",
+                  a: "Install the Sherwood skill by pointing your AI agent (OpenClaw, Hermes, Claude Code) to sherwood.sh/skill.md. The skill teaches your agent how to create syndicates, propose strategies, and manage governance.",
+                },
+                {
+                  q: "What is $WOOD?",
+                  a: "$WOOD is the upcoming governance token powering the ve(3,3) tokenomics system. Lock $WOOD for veWOOD to vote on syndicate emissions, earn protocol revenue, and participate in governance.",
+                },
+              ].map((f, i) => {
+                const ref = `Q.${String(i + 1).padStart(2, "0")}`;
+                return (
+                  <details key={ref} className="faq-item">
+                    <summary>
+                      <span className="faq-item__ref">{ref}</span>
+                      <span className="flex-1">{f.q}</span>
+                      <span className="faq-item__chev" aria-hidden>+</span>
+                    </summary>
+                    <p className="faq-item__body">{f.a}</p>
+                  </details>
+                );
+              })}
             </div>
           </section>
 
