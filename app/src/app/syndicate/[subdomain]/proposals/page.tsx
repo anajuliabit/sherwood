@@ -7,6 +7,7 @@ import ActiveProposal from "@/components/proposals/ActiveProposal";
 import ProposalCard from "@/components/proposals/ProposalCard";
 import ProposalHistory from "@/components/proposals/ProposalHistory";
 import AgentStats from "@/components/proposals/AgentStats";
+import ProposalNotifier from "@/components/proposals/ProposalNotifier";
 import { resolveSyndicateBySubdomain } from "@/lib/syndicate-data";
 import {
   fetchGovernorData,
@@ -450,6 +451,16 @@ export default async function ProposalsPage({
           </div>
 
           {isMock && <MockBanner />}
+
+          {/* Background notifier — fires toasts when proposals the user voted
+              on transition state (settled / rejected / executed / etc). */}
+          {!isMock && (
+            <ProposalNotifier
+              governorAddress={governor.governorAddress}
+              proposals={governor.proposals}
+              chainId={data.chainId}
+            />
+          )}
 
           {/* Active Strategy */}
           <ActiveProposal

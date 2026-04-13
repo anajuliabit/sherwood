@@ -30,6 +30,8 @@ interface DepositModalProps {
   assetAddress: Address;
   assetDecimals: number;
   assetSymbol: string;
+  /** Chain the vault lives on — used to pick the right block explorer. */
+  chainId: number;
   onClose: () => void;
 }
 
@@ -43,10 +45,13 @@ export default function DepositModal({
   assetAddress,
   assetDecimals,
   assetSymbol,
+  chainId,
   onClose,
 }: DepositModalProps) {
   const { address } = useAccount();
-  const addresses = getAddresses();
+  // Use the vault's chain — not the default — so explorer links resolve to
+  // basescan / hyperevmscan / etc correctly on multichain syndicates.
+  const addresses = getAddresses(chainId);
   const toast = useToast();
 
   const [amount, setAmount] = useState("");

@@ -237,6 +237,7 @@ export default async function AgentDetailPage({
                   attestations={agentAttestations}
                   agentNames={agentNames}
                   addressNames={addressNames}
+                  chainId={data.chainId}
                 />
               )}
             </div>

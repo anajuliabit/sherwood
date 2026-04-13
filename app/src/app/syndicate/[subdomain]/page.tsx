@@ -7,6 +7,7 @@ import SyndicateClient from "@/components/SyndicateClient";
 import DepositButton from "@/components/DepositButton";
 import WithdrawButton from "@/components/WithdrawButton";
 import EquityCurveChart from "@/components/EquityCurveChart";
+import RiskMetricsPanel from "@/components/RiskMetricsPanel";
 import VaultOverview from "@/components/VaultOverview";
 import AgentRoster from "@/components/AgentRoster";
 import AttestationTimeline from "@/components/AttestationTimeline";
@@ -127,6 +128,7 @@ export default async function SyndicateDetailPage({
                   assetAddress={data.assetAddress}
                   assetDecimals={data.assetDecimals}
                   assetSymbol={data.assetSymbol}
+                  chainId={data.chainId}
                 />
                 <WithdrawButton
                   vault={data.vault}
@@ -135,6 +137,7 @@ export default async function SyndicateDetailPage({
                   assetSymbol={data.assetSymbol}
                   redemptionsLocked={data.redemptionsLocked}
                   paused={data.paused}
+                  chainId={data.chainId}
                 />
               </div>
             </div>
@@ -164,7 +167,7 @@ export default async function SyndicateDetailPage({
             {/* Attestation + Agent comms row (only on chains with EAS) */}
             {hasEAS && (
               <>
-                <AttestationTimeline attestations={data.attestations} agentNames={agentNames} addressNames={addressNames} />
+                <AttestationTimeline attestations={data.attestations} agentNames={agentNames} addressNames={addressNames} chainId={data.chainId} />
                 <LiveFeed groupId={data.xmtpGroupId ?? undefined} addressNames={addressNames} />
               </>
             )}
@@ -177,19 +180,25 @@ export default async function SyndicateDetailPage({
             )}
           </div>
 
-          {/* Equity curve + Strategy activity */}
+          {/* Equity curve + Risk metrics */}
           <div className="grid-dashboard" style={{ marginTop: 0 }}>
             <div className="panel">
               <EquityCurveChart data={data.equityCurve} hwm={data.display.tvl} />
             </div>
 
-            <StrategyActivity
-              activity={data.activity}
-              assetDecimals={data.assetDecimals}
+            <RiskMetricsPanel
+              series={data.equityCurve}
               assetSymbol={data.assetSymbol}
-              addressNames={addressNames}
             />
           </div>
+
+          {/* Strategy activity — full width below */}
+          <StrategyActivity
+            activity={data.activity}
+            assetDecimals={data.assetDecimals}
+            assetSymbol={data.assetSymbol}
+            addressNames={addressNames}
+          />
         </main>
       </div>
 

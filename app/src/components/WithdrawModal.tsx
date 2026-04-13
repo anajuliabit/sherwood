@@ -29,6 +29,8 @@ interface WithdrawModalProps {
   assetDecimals: number;
   assetSymbol: string;
   shareBalance: bigint;
+  /** Chain the vault lives on — used to pick the right block explorer. */
+  chainId: number;
   onClose: () => void;
 }
 
@@ -42,10 +44,12 @@ export default function WithdrawModal({
   assetDecimals,
   assetSymbol,
   shareBalance,
+  chainId,
   onClose,
 }: WithdrawModalProps) {
   const { address } = useAccount();
-  const addresses = getAddresses();
+  // Use the vault's chain so explorer links resolve to the right scanner.
+  const addresses = getAddresses(chainId);
   const toast = useToast();
 
   const [amount, setAmount] = useState("");

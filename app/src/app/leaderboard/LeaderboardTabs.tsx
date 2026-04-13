@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore, useCallback } from "react";
 import Link from "next/link";
 import { CHAIN_BADGES, truncateAddress } from "@/lib/contracts";
 import type { SyndicateDisplay } from "@/lib/syndicates";
@@ -8,6 +8,94 @@ import { Input } from "@/components/ui/Input";
 import { Tabs } from "@/components/ui/Tabs";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
+
+const PAGE_SIZE = 25;
+const WATCHLIST_KEY = "sherwood_watchlist";
+
+// ── Watchlist (localStorage-backed) ──────────────────────
+function readWatchlist(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = localStorage.getItem(WATCHLIST_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeWatchlist(set: Set<string>) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(WATCHLIST_KEY, JSON.stringify(Array.from(set)));
+    // Manually fire a storage event for same-tab listeners
+    window.dispatchEvent(new StorageEvent("storage", { key: WATCHLIST_KEY }));
+  } catch {
+    // ignore
+  }
+}
+
+function watchlistSubscribe(cb: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener("storage", cb);
+  return () => window.removeEventListener("storage", cb);
+}
+
+function useWatchlist(): { has: (key: string) => boolean; toggle: (key: string) => void; size: number } {
+  const snapshot = useSyncExternalStore(
+    watchlistSubscribe,
+    () => {
+      const s = readWatchlist();
+      // Stable snapshot key based on contents — useSyncExternalStore needs
+      // referentially stable returns when no change has occurred.
+      return JSON.stringify(Array.from(s).sort());
+    },
+    () => "[]",
+  );
+
+  const set = useMemo(() => new Set<string>(JSON.parse(snapshot)), [snapshot]);
+
+  const has = useCallback((k: string) => set.has(k), [set]);
+  const toggle = useCallback(
+    (k: string) => {
+      const next = new Set(set);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      writeWatchlist(next);
+    },
+    [set],
+  );
+
+  return { has, toggle, size: set.size };
+}
+
+function StarButton({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        onClick();
+      }}
+      aria-label={active ? `Remove ${label} from watchlist` : `Add ${label} to watchlist`}
+      title={active ? "Remove from watchlist" : "Add to watchlist"}
+      style={{
+        background: "none",
+        border: "none",
+        cursor: "pointer",
+        padding: "4px",
+        color: active ? "var(--color-accent)" : "rgba(255,255,255,0.3)",
+        fontSize: "14px",
+        lineHeight: 1,
+        transition: "color 0.15s ease",
+      }}
+    >
+      {active ? "★" : "☆"}
+    </button>
+  );
+}
 
 interface RankedSyndicate extends SyndicateDisplay {
   tvlNum: number;
@@ -112,6 +200,12 @@ export default function LeaderboardTabs({ syndicates }: LeaderboardTabsProps) {
   const [query, setQuery] = useState("");
   const [chain, setChain] = useState<ChainFilter>("all");
   const [status, setStatus] = useState<StatusFilter>("all");
+  const [page, setPage] = useState(0);
+  const [showWatchlistOnly, setShowWatchlistOnly] = useState(false);
+  const watchlist = useWatchlist();
+
+  // Reset page when filters change
+  const resetPage = useCallback(() => setPage(0), []);
 
   const agents = useMemo(
     () =>
@@ -135,6 +229,7 @@ export default function LeaderboardTabs({ syndicates }: LeaderboardTabsProps) {
 
   const filteredSyndicates = useMemo(() => {
     return syndicates.filter((s) => {
+      if (showWatchlistOnly && !watchlist.has(`${s.chainId}:${s.id}`)) return false;
       if (chain !== "all" && String(s.chainId) !== chain) return false;
       if (status !== "all" && s.status !== status) return false;
       if (query) {
@@ -149,7 +244,15 @@ export default function LeaderboardTabs({ syndicates }: LeaderboardTabsProps) {
       }
       return true;
     });
-  }, [syndicates, chain, status, query]);
+  }, [syndicates, chain, status, query, showWatchlistOnly, watchlist]);
+
+  // Page slice for syndicates table
+  const totalPages = Math.max(1, Math.ceil(filteredSyndicates.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const pagedSyndicates = filteredSyndicates.slice(
+    safePage * PAGE_SIZE,
+    safePage * PAGE_SIZE + PAGE_SIZE,
+  );
 
   const filteredAgents = useMemo(() => {
     return agents.filter((a) => {
@@ -186,14 +289,20 @@ export default function LeaderboardTabs({ syndicates }: LeaderboardTabsProps) {
         <Input
           placeholder={tab === "syndicates" ? "Search syndicates, strategies, subdomains…" : "Search agents or addresses…"}
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            resetPage();
+          }}
           aria-label="Search"
         />
 
         <FilterDropdown
           label="Chain"
           value={chain}
-          onChange={(v) => setChain(v as ChainFilter)}
+          onChange={(v) => {
+            setChain(v as ChainFilter);
+            resetPage();
+          }}
           options={[
             { value: "all", label: "All chains" },
             ...activeChainIds.map((id) => ({
@@ -207,7 +316,10 @@ export default function LeaderboardTabs({ syndicates }: LeaderboardTabsProps) {
           <FilterDropdown
             label="Status"
             value={status}
-            onChange={(v) => setStatus(v as StatusFilter)}
+            onChange={(v) => {
+              setStatus(v as StatusFilter);
+              resetPage();
+            }}
             options={[
               { value: "all", label: "Any status" },
               { value: "ACTIVE_STRATEGY", label: "Active strategy" },
@@ -216,6 +328,24 @@ export default function LeaderboardTabs({ syndicates }: LeaderboardTabsProps) {
               { value: "NO_AGENTS", label: "No agents" },
             ]}
           />
+        )}
+
+        {tab === "syndicates" && watchlist.size > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              setShowWatchlistOnly((v) => !v);
+              resetPage();
+            }}
+            className="sh-btn sh-btn--secondary sh-btn--sm"
+            aria-pressed={showWatchlistOnly}
+            style={{
+              borderColor: showWatchlistOnly ? "var(--color-accent)" : undefined,
+              color: showWatchlistOnly ? "var(--color-accent)" : undefined,
+            }}
+          >
+            ★ Watchlist ({watchlist.size})
+          </button>
         )}
 
         <span
@@ -276,6 +406,7 @@ export default function LeaderboardTabs({ syndicates }: LeaderboardTabsProps) {
             <table>
               <thead>
                 <tr>
+                  <th scope="col" style={{ width: "32px" }} aria-label="Watchlist"></th>
                   <th scope="col" style={{ width: "40px" }}>Rank</th>
                   <th scope="col">Syndicate</th>
                   <th scope="col">Strategy</th>
@@ -288,12 +419,22 @@ export default function LeaderboardTabs({ syndicates }: LeaderboardTabsProps) {
                 </tr>
               </thead>
               <tbody>
-                {filteredSyndicates.map((s, i) => {
+                {pagedSyndicates.map((s, i) => {
                   const badge = CHAIN_BADGES[s.chainId];
                   const statusMeta = STATUS_COLORS[s.status] || STATUS_COLORS.IDLE;
+                  // Absolute rank index — page offset + position in current page
+                  const rankIdx = safePage * PAGE_SIZE + i;
+                  const watchKey = `${s.chainId}:${s.id}`;
                   return (
-                    <tr key={`${s.chainId}-${s.id}`} className={i === 0 ? "lb-row-top1" : undefined}>
-                      <td><RankCell index={i} /></td>
+                    <tr key={`${s.chainId}-${s.id}`} className={rankIdx === 0 ? "lb-row-top1" : undefined}>
+                      <td>
+                        <StarButton
+                          active={watchlist.has(watchKey)}
+                          onClick={() => watchlist.toggle(watchKey)}
+                          label={s.name}
+                        />
+                      </td>
+                      <td><RankCell index={rankIdx} /></td>
                       <td>
                         <Link
                           href={`/syndicate/${s.subdomain}`}
@@ -352,6 +493,51 @@ export default function LeaderboardTabs({ syndicates }: LeaderboardTabsProps) {
                 })}
               </tbody>
             </table>
+          )}
+
+          {/* Pagination footer */}
+          {filteredSyndicates.length > PAGE_SIZE && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "0.85rem 1rem",
+                borderTop: "1px solid var(--color-border-soft)",
+                fontFamily: "var(--font-mono)",
+                fontSize: 11,
+                color: "var(--color-fg-secondary)",
+                letterSpacing: "0.1em",
+              }}
+            >
+              <span>
+                {safePage * PAGE_SIZE + 1}
+                {"–"}
+                {Math.min((safePage + 1) * PAGE_SIZE, filteredSyndicates.length)}{" "}
+                of {filteredSyndicates.length}
+              </span>
+              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                <button
+                  type="button"
+                  className="sh-btn sh-btn--secondary sh-btn--sm"
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  disabled={safePage === 0}
+                >
+                  ← Prev
+                </button>
+                <span style={{ padding: "0 0.5rem" }}>
+                  Page {safePage + 1} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  className="sh-btn sh-btn--secondary sh-btn--sm"
+                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                  disabled={safePage >= totalPages - 1}
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
           )}
         </div>
       )}
