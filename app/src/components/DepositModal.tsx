@@ -15,6 +15,12 @@ import {
   truncateAddress,
 } from "@/lib/contracts";
 import { useToast } from "@/components/ui/Toast";
+import {
+  trackTxSubmitted,
+  trackTxConfirmed,
+  trackTxFailed,
+  classifyError,
+} from "@/lib/analytics";
 
 interface DepositModalProps {
   vault: Address;
@@ -138,6 +144,7 @@ export default function DepositModal({
   useEffect(() => {
     if (isDepositConfirmed && step === "depositing") {
       setStep("success");
+      if (depositHash) trackTxConfirmed("deposit", vault, depositHash);
       toast.success(
         `Deposited ${amount} ${assetSymbol}`,
         expectedShares > 0n
@@ -145,7 +152,7 @@ export default function DepositModal({
           : "Your position is live onchain.",
       );
     }
-  }, [isDepositConfirmed, step, toast, amount, assetSymbol, expectedShares, assetDecimals]);
+  }, [isDepositConfirmed, step, toast, amount, assetSymbol, expectedShares, assetDecimals, depositHash, vault]);
 
   function handleApprove() {
     if (!address) return;
@@ -158,10 +165,12 @@ export default function DepositModal({
         args: [vault, parsedAmount],
       },
       {
+        onSuccess: (hash) => trackTxSubmitted("approve", vault, hash),
         onError: (err) => {
           const msg = (err as { shortMessage?: string }).shortMessage || "Transaction was rejected or reverted.";
           setErrorMsg(msg);
           setStep("error");
+          trackTxFailed("approve", vault, classifyError(err));
         },
       },
     );
@@ -178,10 +187,12 @@ export default function DepositModal({
         args: [parsedAmount, address],
       },
       {
+        onSuccess: (hash) => trackTxSubmitted("deposit", vault, hash),
         onError: (err) => {
           const msg = (err as { shortMessage?: string }).shortMessage || "Transaction was rejected or reverted.";
           setErrorMsg(msg);
           setStep("error");
+          trackTxFailed("deposit", vault, classifyError(err));
         },
       },
     );

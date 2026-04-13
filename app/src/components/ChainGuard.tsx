@@ -7,9 +7,11 @@
  * a supported chain.
  */
 
+import { useEffect } from "react";
 import { useAccount, useChainId, useSwitchChain } from "wagmi";
 import { CHAINS } from "@/lib/contracts";
 import { useToast } from "@/components/ui/Toast";
+import { trackChainSwitchRequired } from "@/lib/analytics";
 
 export default function ChainGuard() {
   const { isConnected } = useAccount();
@@ -17,14 +19,21 @@ export default function ChainGuard() {
   const { switchChain, isPending } = useSwitchChain();
   const toast = useToast();
 
-  if (!isConnected) return null;
-
   const supported = Object.keys(CHAINS).map((n) => Number(n));
-  if (supported.includes(chainId)) return null;
+  const isWrongChain = isConnected && !supported.includes(chainId);
 
   const firstChain = Object.values(CHAINS)[0];
   const targetId = firstChain?.chain.id;
   const targetName = firstChain?.chain.name ?? "Base";
+
+  // Telemetry: record exposure to the wrong-chain banner
+  useEffect(() => {
+    if (isWrongChain && targetId) {
+      trackChainSwitchRequired(chainId, targetId);
+    }
+  }, [isWrongChain, chainId, targetId]);
+
+  if (!isWrongChain) return null;
 
   return (
     <div className="chain-banner" role="alert">

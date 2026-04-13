@@ -14,6 +14,12 @@ import {
   truncateAddress,
 } from "@/lib/contracts";
 import { useToast } from "@/components/ui/Toast";
+import {
+  trackTxSubmitted,
+  trackTxConfirmed,
+  trackTxFailed,
+  classifyError,
+} from "@/lib/analytics";
 
 interface WithdrawModalProps {
   vault: Address;
@@ -87,12 +93,13 @@ export default function WithdrawModal({
   useEffect(() => {
     if (isWithdrawConfirmed && step === "withdrawing") {
       setStep("success");
+      if (withdrawHash) trackTxConfirmed("withdraw", vault, withdrawHash);
       toast.success(
         "Withdrawal confirmed",
         `Your ${assetSymbol} is back in your wallet.`,
       );
     }
-  }, [isWithdrawConfirmed, step, toast, assetSymbol]);
+  }, [isWithdrawConfirmed, step, toast, assetSymbol, withdrawHash, vault]);
 
   function handleWithdraw() {
     if (!address) return;
@@ -108,10 +115,12 @@ export default function WithdrawModal({
           args: [shareBalance, address, address],
         },
         {
+          onSuccess: (hash) => trackTxSubmitted("withdraw", vault, hash),
           onError: (err) => {
             const msg = (err as { shortMessage?: string }).shortMessage || "Transaction was rejected or reverted.";
             setErrorMsg(msg);
             setStep("error");
+            trackTxFailed("withdraw", vault, classifyError(err));
           },
         },
       );
@@ -125,10 +134,12 @@ export default function WithdrawModal({
           args: [parsedAmount, address, address],
         },
         {
+          onSuccess: (hash) => trackTxSubmitted("withdraw", vault, hash),
           onError: (err) => {
             const msg = (err as { shortMessage?: string }).shortMessage || "Transaction was rejected or reverted.";
             setErrorMsg(msg);
             setStep("error");
+            trackTxFailed("withdraw", vault, classifyError(err));
           },
         },
       );

@@ -24,7 +24,27 @@ export async function generateMetadata({
   const { subdomain } = await params;
   const data = await resolveSyndicateBySubdomain(subdomain);
   const name = data?.metadata?.name || subdomain;
-  return { title: `Sherwood // ${name}` };
+  const tvl = data?.display?.tvl || "—";
+  const agentCount = data?.agentCount?.toString() || "0";
+  const description = data
+    ? `${name} — TVL ${tvl}, ${agentCount} agent${agentCount === "1" ? "" : "s"} on ${subdomain}.sherwoodagent.eth.`
+    : `Syndicate ${subdomain}`;
+  return {
+    title: `Sherwood // ${name}`,
+    description,
+    alternates: { canonical: `/syndicate/${subdomain}` },
+    openGraph: {
+      title: `${name} · Sherwood`,
+      description,
+      type: "website",
+      // Each route auto-generates an opengraph-image via opengraph-image.tsx
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${name} · Sherwood`,
+      description,
+    },
+  };
 }
 
 export default async function SyndicateDetailPage({

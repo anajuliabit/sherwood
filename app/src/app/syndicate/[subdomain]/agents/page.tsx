@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import AmbientBackground from "@/components/AmbientBackground";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
@@ -117,16 +118,18 @@ export default async function AgentsPage({
                     {/* Header: name + status */}
                     <div className="flex justify-between items-start mb-3">
                       <div>
-                        <div
-                          className="font-[family-name:var(--font-inter)]"
+                        <Link
+                          href={`/syndicate/${subdomain}/agents/${agent.agentId.toString()}`}
+                          className="font-[family-name:var(--font-inter)] no-underline hover:text-[var(--color-accent)] transition-colors"
                           style={{
                             fontSize: "16px",
                             fontWeight: 600,
                             color: "white",
+                            display: "block",
                           }}
                         >
-                          {displayName}
-                        </div>
+                          {displayName} →
+                        </Link>
                         <div
                           className="font-[family-name:var(--font-plus-jakarta)]"
                           style={{
