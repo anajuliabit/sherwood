@@ -8,7 +8,7 @@ import {
   ProposalState,
   formatTimeRemaining,
 } from "@/lib/governor-data";
-import { truncateAddress, formatBps, formatShares } from "@/lib/contracts";
+import { truncateAddress, formatBps, formatShares, shareDecimals } from "@/lib/contracts";
 import VoteButton from "./VoteButton";
 import ExecutionCallPreview from "./ExecutionCallPreview";
 import VoteConcentration from "./VoteConcentration";
@@ -155,7 +155,7 @@ export default function ProposalCard({
             <div className="prop-card__vote-foot">
               <span style={{ color: "var(--color-accent)" }}>For</span>
               <span>
-                {formatShares(totalVotes, assetDecimals * 2)} shares · Veto ≥ {formatBps(params.vetoThresholdBps)}
+                {formatShares(totalVotes, shareDecimals(assetDecimals))} shares · Veto ≥ {formatBps(params.vetoThresholdBps)}
               </span>
               <span style={{ color: "#ff4d4d" }}>Against</span>
             </div>
