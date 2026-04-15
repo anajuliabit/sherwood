@@ -159,7 +159,7 @@ interface IVotingEscrow {
 
 | Recipient | Share | Asset | Purpose |
 |-----------|-------|-------|---------|
-| veWOOD holders | 60% | USDC | Real yield in USDC — pro-rata by fee share weight |
+| veWOOD holders | 60% | USDC | Protocol fee share in USDC — pro-rata by fee share weight |
 | Buyback & lock | 20% | Vault asset → WOOD → veWOOD | Supply reduction, protocol-owned veWOOD |
 | Protocol treasury | 20% | Vault asset | Operations, development, audits (multisig-controlled) |
 
@@ -191,7 +191,10 @@ interface IFeeDistributor {
     function epochFees(uint256 epoch) external view returns (uint256);
 
     /// @notice Execute the epoch fee distribution split
-    /// @dev Called at epoch flip — splits deposited USDC into veWOOD/buyback/treasury buckets
+    /// @dev Called at epoch flip — splits deposited USDC into veWOOD/buyback/treasury buckets.
+    ///      Permissionless but reverts if epoch hasn't ended or no fees deposited.
+    ///      Rounding dust (from integer division across 3 buckets) accumulates in a
+    ///      sweep-able dust buffer, claimable by treasury via sweepDust().
     function distributeEpoch(uint256 epoch) external;
 }
 ```
@@ -253,28 +256,42 @@ veWOOD holders always claim in USDC regardless of which vault asset generated th
 
 ```solidity
 interface IBootstrapRewards {
-    /// @notice Claim earned bootstrapping rewards (non-transferable until unlock)
-    /// @param vault The vault deposited into (for depositor rewards)
-    function claimBootstrapRewards(address vault) external;
+    /// @notice Claim earned bootstrapping rewards for vault depositors (55% bucket)
+    /// @param vault The vault deposited into — rewards pro-rata by time-weighted deposit size
+    function claimDepositorRewards(address vault) external;
+
+    /// @notice Claim earned bootstrapping rewards for veWOOD lockers (30% bucket)
+    /// @dev Pro-rata by veWOOD fee share weight at epoch boundary
+    function claimLockerRewards() external;
+
+    /// @notice Claim earned bootstrapping rewards for shareToken/WOOD LPs (15% bucket, months 1-6)
+    /// @param pool The Aerodrome pool address — rewards pro-rata by LP share
+    function claimLPRewards(address pool) external;
 
     /// @notice Check if tokens are transferable yet
     function isTransferable() external view returns (bool);
 
-    /// @notice Get total earned rewards for an account
+    /// @notice Get total earned rewards for an account (across all buckets)
     function earned(address account) external view returns (uint256);
 
     /// @notice Get claimable (vested + unlocked) rewards
     function claimable(address account) external view returns (uint256);
 
-    /// @notice Convert non-transferable rewards to transferable WOOD
+    /// @notice Convert non-transferable rewards to transferable WOOD (partial or full)
+    /// @param amount Amount to convert (pass type(uint256).max for all)
     /// @dev Only callable after the 6-month unlock date
-    function convertToTransferable() external;
+    function convertToTransferable(uint256 amount) external;
 
     /// @notice Lock non-transferable rewards directly into veWOOD
     /// @dev Callable before the 6-month unlock — enables fee sharing without sell pressure
     function lockIntoVeWOOD(uint256 amount, uint256 duration) external returns (uint256 tokenId);
 }
 ```
+
+**Reward allocation within buckets:**
+- **Depositors (55%):** Pro-rata by time-weighted deposit size within each vault, computed at epoch boundary. Uses the same snapshot checkpoint system as FeeDistributor.
+- **veWOOD lockers (30%):** Pro-rata by veWOOD fee share weight at epoch boundary. Same weight used for fee distribution.
+- **LPs (15%, months 1-6 only):** Pro-rata by LP token balance in protocol-tracked Aerodrome pools.
 
 **Implementation:** BootstrapRewards holds the 75M WOOD allocation. Claimed rewards are tracked as internal balances (not ERC-20 transfers). After 6 months, holders call `convertToTransferable()` to receive actual WOOD tokens. During the non-transferable period, rewards can be locked into veWOOD via `lockIntoVeWOOD()` — providing fee share weight without any sell pressure.
 
@@ -357,12 +374,11 @@ After LP bootstrapping incentives end at month 6, pool depth is sustained by:
 
 ```solidity
 interface IBuybackEngine {
-    /// @notice Execute a buyback using accumulated fee revenue
-    /// @param token The fee token to sell (e.g., USDC, WETH)
-    /// @param amount The amount to sell
+    /// @notice Execute a buyback using accumulated USDC from FeeDistributor
+    /// @param amount The USDC amount to sell for WOOD
     /// @param minWoodOut Minimum WOOD to receive (slippage protection via 30-min TWAP)
-    /// @dev Creates a CoW TWAP order: 24 parts, 1hr intervals
-    function executeBuyback(address token, uint256 amount, uint256 minWoodOut) external;
+    /// @dev Creates a CoW TWAP order: 24 parts, 1hr intervals. USDC-only — matches FeeDistributor.
+    function executeBuyback(uint256 amount, uint256 minWoodOut) external;
 
     /// @notice Lock purchased WOOD as protocol veWOOD (auto-max-lock)
     /// @dev Called by CoW post-hook after TWAP order fills
@@ -393,9 +409,11 @@ At scale, the buyback becomes a significant supply sink — but only if the prot
 
 ## Protocol Control
 
-**All protocol operations are controlled by a 3-of-5 multisig.** There is no on-chain governance via veWOOD. veWOOD is purely an economic mechanism for fee sharing.
+**All protocol operations are controlled by a 3-of-5 protocol multisig.** There is no on-chain governance via veWOOD. veWOOD is purely an economic mechanism for fee sharing.
 
-**Multisig responsibilities:**
+A separate **2-of-3 pause guardian multisig** can halt contracts in emergencies (faster response than 3-of-5). Unpausing requires the full 3-of-5 protocol multisig. The two multisigs share some but not all signers.
+
+**Protocol multisig responsibilities:**
 - Protocol parameter changes (fee rates, bootstrapping schedule adjustments)
 - Treasury spending
 - Emergency actions (pause contracts, adjust parameters)
@@ -450,7 +468,7 @@ Aerodrome protocol-owned LP positions (WOOD/WETH + shareToken/WOOD)
 | Vault depositors | Remainder after fees | — | 55% (months 1-12) | — |
 | Vault owner | Management fee | — | — | — |
 | Agent (proposer) | Performance fee | — | — | — |
-| veWOOD holders | — | 60% (real yield in USDC) | 30% (months 1-12) | — |
+| veWOOD holders | — | 60% (protocol fee share in USDC) | 30% (months 1-12) | — |
 | shareToken/WOOD LPs | — | — | 15% (months 1-6) | Swap fees (kept) |
 | Protocol treasury | Protocol fee → FeeDistributor | 20% | — | Protocol-owned position fees |
 | Buyback engine | — | 20% (→ locked veWOOD) | — | — |
@@ -490,8 +508,8 @@ TGE (Day 0):
   Circulating:            ~150M (30% of supply)
   Float (tradeable):      ~100M (20% of supply)
 
-Month 6:
-  + Team fully vested:     75M
+Month 7 (team fully vested at 1mo cliff + 6mo linear):
+  + Team vested:           75M
   + Bootstrap earned:     ~52.5M (months 1-6 allocation, NOW TRANSFERABLE)
   + Treasury/grants dep:  ~10M (estimated operational spend)
   ─────────────────────────────
@@ -712,7 +730,7 @@ The explicit revenue sharing model (60% of fees to veWOOD) is transparent but di
 **Responses:**
 1. **No emission-based circuit breaker needed** — there are no emissions to cut. The protocol's cost structure is fixed (team vesting is predetermined, bootstrapping schedule is predetermined)
 2. **Buyback becomes more efficient** — 20% of fee revenue buys more WOOD at lower prices, creating counter-cyclical buy pressure
-3. **Fee revenue is in USDC** — veWOOD holders earn real yield regardless of WOOD price. This actually stabilizes the model vs v3 where falling WOOD price made emissions worthless.
+3. **Fee revenue is in USDC** — veWOOD holders earn protocol fee share regardless of WOOD price. This actually stabilizes the model vs v3 where falling WOOD price made emissions worthless.
 
 ### Scenario 3: Bootstrap Period Ends, Revenue Insufficient
 
@@ -768,7 +786,7 @@ Reduced from 5 phases (v3) to 2 phases. Fewer contracts = faster deployment.
 |--------|----|----|-----------|
 | **Total supply** | 1B (500M initial + 500M emissions) | 500M (all at genesis) | 50% emission budget is a death spiral risk for non-DEX protocols |
 | **Emission model** | Open-ended (Minter.sol, WOOD Fed) | 15% bootstrapping, 12 months, steep decay | Every non-DEX with 50%+ emissions death-spiraled |
-| **Value accrual** | Indirect (emissions → price appreciation) | Direct (60% fee revenue → veWOOD holders in USDC) | Real yield > inflation farming |
+| **Value accrual** | Indirect (emissions → price appreciation) | Direct (60% fee revenue → veWOOD holders in USDC) | Protocol fee share > inflation farming |
 | **Gauge voting** | Core mechanism (Voter.sol, SyndicateGauge.sol) | Removed entirely | No natural bribe market for fund protocol |
 | **Bribe layer** | VoteIncentive.sol | Removed | Artificial game without gauge emissions |
 | **Rebase/anti-dilution** | Formula-based rebase for veWOOD | Not needed — no inflation to dilute against | Simpler, no inflation |
