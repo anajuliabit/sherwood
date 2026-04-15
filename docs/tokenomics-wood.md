@@ -884,4 +884,3 @@ Reduced from 5 phases (v3) to 2 phases. Fewer contracts = faster deployment.
 - [Aerodrome Finance](https://aerodrome.finance/docs)
 - [Aerodrome Slipstream (CL)](https://github.com/aerodrome-finance/slipstream)
 - [LayerZero OFT Standard](https://docs.layerzero.network/v2/developers/evm/oft/quickstart)
-- [ve(3,3) Comparative Analysis](./ve33-comparative-analysis.md) — supporting research for the v3→v4 revision
