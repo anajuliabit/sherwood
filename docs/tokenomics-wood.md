@@ -1,10 +1,9 @@
 # WOOD Token — Revenue-Driven Tokenomics
 
-> **Status:** Design Spec (v4 — Revision)
+> **Status:** Design Spec
 > **Author:** Ally (AI CEO)
 > **Date:** 2026-04-06
-> **Supersedes:** tokenomics-wood.md (v3)
-> **Revision rationale:** Comparative analysis of ve(3,3) deployments showed that 50%+ emission budgets cause death spirals for non-DEX protocols. Every non-monopoly-DEX that tried this model failed. The only non-DEX ve success (Pendle) used 37% emissions with rapid decay AND had massive real revenue. v4 redesigns tokenomics around real protocol fee revenue, not inflation.
+> **History:** Replaced the ve(3,3) emission-driven model after comparative analysis showed 50%+ emission budgets cause death spirals for non-DEX protocols. Redesigned around real protocol fee revenue.
 
 ## Overview
 
@@ -94,7 +93,7 @@ BOOTSTRAPPING ACCELERATOR (months 1-12):
   governance weight, all before a single bootstrapping token hits the market (6-month lock)
 ```
 
-**Key difference from v3:** The v3 flywheel depended on WOOD emissions being valuable (WOOD price ↑ → emissions more valuable → more deposits). This is circular — it only works if WOOD price goes up. The v4 flywheel is grounded in real protocol fee revenue. If strategies perform well, fees are generated regardless of WOOD price. veWOOD holders earn USDC, not more WOOD.
+**Key difference from v3:** The v3 flywheel depended on WOOD emissions being valuable (WOOD price ↑ → emissions more valuable → more deposits). This is circular — it only works if WOOD price goes up. This flywheel is grounded in real protocol fee revenue. If strategies perform well, fees are generated regardless of WOOD price. veWOOD holders earn USDC, not more WOOD.
 
 ## Detailed Design
 
@@ -163,7 +162,7 @@ interface IVotingEscrow {
 | Buyback & lock | 20% | Vault asset → WOOD → veWOOD | Supply reduction, protocol-owned veWOOD |
 | Protocol treasury | 20% | Vault asset | Operations, development, audits (multisig-controlled) |
 
-**Epoch:** 7-day period, Thursday 00:00 UTC → Wednesday 23:59 UTC (same as v3).
+**Epoch:** 7-day period, Thursday 00:00 UTC → Wednesday 23:59 UTC (standard).
 
 **Claim mechanism:** veWOOD holders claim their fee share after each epoch. Claims are computed on-chain using VotingEscrow checkpoints — no Merkle trees or off-chain infrastructure.
 
@@ -305,12 +304,12 @@ interface IBootstrapRewards {
 
 Each syndicate vault produces share tokens (e.g., `swUSDC`, `swETH`). Per-syndicate Aerodrome Slipstream pools serve as secondary markets:
 
-**Purpose (without gauges — key change from v3):**
+**Purpose (without gauges — gauges removed):**
 1. **Early exit for depositors.** Vault redemptions are locked during active proposals (`redemptionsLocked()`). The shareToken/WOOD pool provides a secondary market where depositors can sell their share tokens without waiting for strategy settlement.
 2. **Organic WOOD demand.** Depositors sell shareTokens → get WOOD → sell WOOD on WOOD/WETH → exit to stables. This creates natural buy-side demand for WOOD.
 3. **Price discovery.** ShareTokens are equity-like claims on syndicate performance. The pool price reflects the market's assessment of a syndicate's strategy quality.
 
-**Note:** In v3, these pools also served as a gauge eligibility requirement. That requirement is removed — pools exist purely for depositor exit liquidity and price discovery. Pool creation is **permissionless** — anyone can create a pool for any syndicate.
+**Note:** These pools exist purely for depositor exit liquidity and price discovery — pools exist purely for depositor exit liquidity and price discovery. Pool creation is **permissionless** — anyone can create a pool for any syndicate.
 
 **Primary WOOD/WETH pool (one-time):**
 
@@ -368,7 +367,7 @@ After LP bootstrapping incentives end at month 6, pool depth is sustained by:
 
 ### 5. Buyback-and-Lock (BuybackEngine.sol)
 
-**Retained from v3 with modifications.** 20% of protocol fee revenue is used to buy WOOD from the WOOD/WETH pool and lock it as protocol-owned veWOOD.
+**Retained from prior design with modifications.** 20% of protocol fee revenue is used to buy WOOD from the WOOD/WETH pool and lock it as protocol-owned veWOOD.
 
 **Execution via CoW Protocol TWAP:**
 
@@ -425,7 +424,7 @@ A separate **2-of-3 pause guardian multisig** can halt contracts in emergencies 
 
 ## Fee Architecture Integration
 
-v4 simplifies the fee architecture. Two revenue streams, clean separation:
+The current design simplifies the fee architecture. Two revenue streams, clean separation:
 
 ### 1. Strategy Profits (vault asset) — existing, unchanged
 
@@ -461,7 +460,7 @@ Aerodrome protocol-owned LP positions (WOOD/WETH + shareToken/WOOD)
   → Protocol treasury (seeds new syndicate pools)
 ```
 
-**Who earns what (v4):**
+**Who earns what:**
 
 | Participant | Vault Asset Profits | Fee Revenue Share | Bootstrapping WOOD | LP Fees |
 |-------------|:---:|:---:|:---:|:---:|
@@ -473,7 +472,7 @@ Aerodrome protocol-owned LP positions (WOOD/WETH + shareToken/WOOD)
 | Protocol treasury | Protocol fee → FeeDistributor | 20% | — | Protocol-owned position fees |
 | Buyback engine | — | 20% (→ locked veWOOD) | — | — |
 
-**Comparison to v3:** v3 had four distinct revenue streams (strategy profits, WOOD emissions, trading fees, bribes) flowing through multiple contracts (Minter, FeeCollector, VoteIncentive, VaultRewardsDistributor, RewardsDistributor). v4 consolidates to two: strategy profits (existing) and fee distribution (new), plus LP fees from protocol-owned positions managed by multisig. This reduces contract surface area from 9 to 5.
+**Comparison to v3:** v3 had four distinct revenue streams (strategy profits, WOOD emissions, trading fees, bribes) flowing through multiple contracts (Minter, FeeCollector, VoteIncentive, VaultRewardsDistributor, RewardsDistributor). This consolidates to two: strategy profits (existing) and fee distribution (new), plus LP fees from protocol-owned positions managed by multisig. This reduces contract surface area from 9 to 5.
 
 ## Token Distribution
 
@@ -791,7 +790,7 @@ Reduced from 5 phases (v3) to 2 phases. Fewer contracts = faster deployment.
 | **Bribe layer** | VoteIncentive.sol | Removed | Artificial game without gauge emissions |
 | **Rebase/anti-dilution** | Formula-based rebase for veWOOD | Not needed — no inflation to dilute against | Simpler, no inflation |
 | **Governance** | veWOOD holders vote on protocol parameters | No governance — multisig controls all | Ship fast, add governance later if needed |
-| **Safety mechanism** | None | None (removed in v4 revision) | Incompatible with permissionless syndicate creation |
+| **Safety mechanism** | None | None (removed) | Incompatible with permissionless syndicate creation |
 | **Revenue sharing** | Indirect (trading fees → treasury → pool seeding) | Direct (60% of protocol fees → veWOOD in stables) | Honest, measurable yield |
 | **Bootstrapping** | Permanent emissions + bribes | 75M non-transferable WOOD over 12 months | Zero sell pressure during critical growth period |
 | **shareToken/WOOD pools** | Required for gauge eligibility | Kept — for secondary market exit only | Still critical for depositor exit during locked redemptions |
