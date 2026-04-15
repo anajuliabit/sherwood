@@ -311,6 +311,20 @@ Each syndicate vault produces share tokens (e.g., `swUSDC`, `swETH`). Per-syndic
 
 **Note:** These pools exist purely for depositor exit liquidity and price discovery. Pool creation is **permissionless** — anyone can create a pool for any syndicate.
 
+#### Launch Parameters (Aero Launch — single source of truth)
+
+These are the canonical numbers used by every "Aero Launch" reference in
+this doc and in `roadmap.md`. **Update here first, then sync inline
+mentions.** Final values pinned in PR #47 — adjust as that plan firms up.
+
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| Total POL allocation | 150M WOOD (30% of supply) | From the genesis allocation table |
+| WOOD/WETH primary — WOOD side | ~90M WOOD | Two-sided concentrated + single-sided sell-side combined |
+| WOOD/WETH primary — ETH side | ~5 ETH | From treasury; pairs only the two-sided concentrated portion |
+| shareToken/WOOD genesis cohort | ~60M WOOD | Single-sided WOOD across the first ~10 syndicates |
+| Per-syndicate LP rewards / exit incentives | from Community / grants (15%) | Not a separate token allocation |
+
 **Primary WOOD/WETH pool (one-time):**
 
 A deep WOOD/WETH pool on Aerodrome Slipstream serves as the canonical market for WOOD price discovery. We seed it directly at TGE — no public sale or LBP — using the two-sided + single-sided Clanker-style approach:
